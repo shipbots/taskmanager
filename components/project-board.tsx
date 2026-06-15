@@ -12,7 +12,7 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core';
-import { Plus, LayoutList, KanbanSquare, ChevronDown, ChevronRight } from 'lucide-react';
+import { Plus, LayoutList, KanbanSquare, ChevronDown, ChevronRight, Search } from 'lucide-react';
 import type { ProjectView, TaskView, TaskStatus } from '@/lib/types';
 import { STATUS_ORDER, STATUS_META } from '@/lib/types';
 import { TaskRow } from '@/components/task-row';
@@ -37,11 +37,26 @@ export function ProjectBoard({
   const [addOpen, setAddOpen] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [showCompleted, setShowCompleted] = useState(false);
+  const [search, setSearch] = useState('');
+  const [clientFilter, setClientFilter] = useState('');
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
-  const listTasks = useMemo(() => sortByUrgency(tasks), [tasks]);
-  const grouped = useMemo(() => groupByStatus(tasks), [tasks]);
+  const clientOptions = useMemo(
+    () => Array.from(new Set(tasks.map((t) => t.client).filter((c): c is string => !!c))).sort(),
+    [tasks],
+  );
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return tasks.filter((t) => {
+      if (clientFilter && t.client !== clientFilter) return false;
+      if (q && !(t.name.toLowerCase().includes(q) || (t.client ?? '').toLowerCase().includes(q)))
+        return false;
+      return true;
+    });
+  }, [tasks, search, clientFilter]);
+  const listTasks = useMemo(() => sortByUrgency(filtered), [filtered]);
+  const grouped = useMemo(() => groupByStatus(filtered), [filtered]);
   const activeTask = activeId ? tasks.find((t) => t.id === activeId) ?? null : null;
 
   function upsertTask(task: TaskView) {
@@ -121,6 +136,37 @@ export function ProjectBoard({
             </span>
           </Button>
         </div>
+      </div>
+
+      <div className="flex items-center gap-2 mb-4">
+        <div className="relative flex-1 max-w-xs">
+          <Search className="w-4 h-4 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search tasks or clients…"
+            className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 text-sm focus:outline-none focus:border-[var(--accent)]"
+          />
+        </div>
+        {clientOptions.length > 0 && (
+          <select
+            value={clientFilter}
+            onChange={(e) => setClientFilter(e.target.value)}
+            className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-sm text-slate-700 focus:outline-none focus:border-[var(--accent)]"
+          >
+            <option value="">All clients</option>
+            {clientOptions.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        )}
+        {(search || clientFilter) && (
+          <span className="text-xs text-slate-400">
+            {filtered.length} match{filtered.length === 1 ? '' : 'es'}
+          </span>
+        )}
       </div>
 
       {view === 'list' ? (

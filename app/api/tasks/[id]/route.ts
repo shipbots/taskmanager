@@ -4,6 +4,7 @@ import { dueDateFromInput, formatDueDate } from '@/lib/dates';
 import { effectiveDueDate } from '@/lib/task-derive';
 import { serializeTask } from '@/lib/serialize';
 import { TASK_DETAIL_INCLUDE, logActivity } from '@/lib/task-service';
+import { saveClient } from '@/lib/clients';
 import { ActivityType, Priority, TaskStatus, type Prisma } from '@prisma/client';
 import { STATUS_META, PRIORITY_META } from '@/lib/types';
 
@@ -84,6 +85,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     }
 
     await prisma.task.update({ where: { id }, data });
+    if (typeof data.client === 'string' && data.client) await saveClient(existing.projectId, data.client);
     for (const l of logs) await logActivity(id, l.type, l.message);
 
     const full = await prisma.task.findUnique({ where: { id }, include: TASK_DETAIL_INCLUDE });

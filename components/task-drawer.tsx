@@ -61,6 +61,7 @@ export function TaskDrawer({
   const readOnly = !!initialTask?.readOnly || taskId.startsWith('shipbots:');
   const [task, setTask] = useState<TaskView | null>(initialTask ?? null);
   const [templates, setTemplates] = useState<TemplateView[]>([]);
+  const [clients, setClients] = useState<string[]>([]);
   const [newSub, setNewSub] = useState('');
   const [newSubDate, setNewSubDate] = useState('');
   const [comment, setComment] = useState('');
@@ -78,7 +79,13 @@ export function TaskDrawer({
       .then((r) => (r.ok ? r.json() : []))
       .then((d) => Array.isArray(d) && setTemplates(d))
       .catch(() => {});
-  }, [taskId, readOnly]);
+    const pid = initialTask?.projectId;
+    if (pid)
+      fetch(`/api/clients?projectId=${pid}`)
+        .then((r) => (r.ok ? r.json() : []))
+        .then((d) => Array.isArray(d) && setClients(d.map((c: { name: string }) => c.name)))
+        .catch(() => {});
+  }, [taskId, readOnly, initialTask?.projectId]);
 
   function apply(updated: TaskView) {
     setTask(updated);
@@ -274,12 +281,20 @@ export function TaskDrawer({
             {readOnly ? (
               <div className="text-sm text-slate-700">{task.client || '—'}</div>
             ) : (
-              <input
-                defaultValue={task.client ?? ''}
-                onBlur={(e) => e.target.value !== (task.client ?? '') && patchTask({ client: e.target.value })}
-                className={inputClass}
-                placeholder="Client"
-              />
+              <>
+                <input
+                  defaultValue={task.client ?? ''}
+                  onBlur={(e) => e.target.value !== (task.client ?? '') && patchTask({ client: e.target.value })}
+                  className={inputClass}
+                  placeholder="Client"
+                  list="drawer-clients"
+                />
+                <datalist id="drawer-clients">
+                  {clients.map((c) => (
+                    <option key={c} value={c} />
+                  ))}
+                </datalist>
+              </>
             )}
           </div>
           <div>

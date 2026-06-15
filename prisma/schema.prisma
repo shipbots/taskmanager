@@ -51,6 +51,18 @@ model Project {
   updatedAt           DateTime   @updatedAt
   tasks               Task[]
   templates           Template[]
+  clients             Client[]
+}
+
+model Client {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name      String
+  createdAt DateTime @default(now())
+
+  @@unique([projectId, name])
+  @@index([projectId])
 }
 
 model Task {

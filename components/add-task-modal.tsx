@@ -24,6 +24,7 @@ export function AddTaskModal({
   const [description, setDescription] = useState('');
   const [templateId, setTemplateId] = useState('');
   const [templates, setTemplates] = useState<TemplateView[]>([]);
+  const [clients, setClients] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -32,6 +33,18 @@ export function AddTaskModal({
       .then((data) => Array.isArray(data) && setTemplates(data))
       .catch(() => {});
   }, []);
+
+  // Saved clients for the selected project (autocomplete suggestions).
+  useEffect(() => {
+    if (!projectId) {
+      setClients([]);
+      return;
+    }
+    fetch(`/api/clients?projectId=${projectId}`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => Array.isArray(d) && setClients(d.map((c: { name: string }) => c.name)))
+      .catch(() => {});
+  }, [projectId]);
 
   const availableTemplates = templates.filter(
     (t) => t.projectId === null || t.projectId === projectId,
@@ -129,7 +142,13 @@ export function AddTaskModal({
               value={client}
               onChange={(e) => setClient(e.target.value)}
               placeholder="Optional"
+              list="addtask-clients"
             />
+            <datalist id="addtask-clients">
+              {clients.map((c) => (
+                <option key={c} value={c} />
+              ))}
+            </datalist>
           </div>
           <div>
             <label className={labelClass}>Due date</label>

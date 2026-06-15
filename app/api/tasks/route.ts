@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { dueDateFromInput } from '@/lib/dates';
 import { serializeTask } from '@/lib/serialize';
 import { TASK_LIST_INCLUDE, TASK_DETAIL_INCLUDE, applyTemplateToTask, logActivity } from '@/lib/task-service';
+import { saveClient } from '@/lib/clients';
 import { ActivityType, Prisma, Priority, TaskStatus } from '@prisma/client';
 
 export const dynamic = 'force-dynamic';
@@ -69,6 +70,7 @@ export async function POST(request: Request) {
     });
 
     await logActivity(created.id, ActivityType.CREATED, 'Task created');
+    if (created.client) await saveClient(projectId, created.client);
 
     if (body.templateId) {
       await applyTemplateToTask(created.id, body.templateId, created.createdAt);

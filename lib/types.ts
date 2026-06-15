@@ -84,6 +84,11 @@ export interface ProjectView {
   pullsFromOnboarding: boolean;
 }
 
+export interface ClientView {
+  id: string;
+  name: string;
+}
+
 export interface TemplateItemView {
   id: string;
   name: string;
