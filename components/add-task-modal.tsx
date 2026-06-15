@@ -4,6 +4,13 @@ import { useEffect, useState } from 'react';
 import { Modal, Button, inputClass, labelClass } from '@/components/ui';
 import { PRIORITY_ORDER, PRIORITY_META } from '@/lib/types';
 import type { ProjectView, TaskView, TemplateView, Priority } from '@/lib/types';
+import { todayYMD } from '@/lib/dates';
+
+function tomorrowYMD(): string {
+  const t = new Date();
+  t.setDate(t.getDate() + 1);
+  return todayYMD(t);
+}
 
 export function AddTaskModal({
   projects,
@@ -19,7 +26,7 @@ export function AddTaskModal({
   const [name, setName] = useState('');
   const [projectId, setProjectId] = useState(defaultProjectId || projects[0]?.id || '');
   const [client, setClient] = useState('');
-  const [dueDate, setDueDate] = useState('');
+  const [dueDate, setDueDate] = useState(tomorrowYMD); // default: next day
   const [priority, setPriority] = useState<Priority>('MEDIUM');
   const [description, setDescription] = useState('');
   const [templateId, setTemplateId] = useState('');

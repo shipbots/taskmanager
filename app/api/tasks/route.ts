@@ -2,7 +2,7 @@ import { isAuthed, unauthorized, json, badRequest, serverError } from '@/lib/api
 import { prisma } from '@/lib/prisma';
 import { dueDateFromInput } from '@/lib/dates';
 import { serializeTask } from '@/lib/serialize';
-import { TASK_LIST_INCLUDE, TASK_DETAIL_INCLUDE, applyTemplateToTask, logActivity } from '@/lib/task-service';
+import { TASK_LIST_INCLUDE, TASK_DETAIL_INCLUDE, applyTemplateToTask, logActivity, addDaysNoonUTC } from '@/lib/task-service';
 import { saveClient } from '@/lib/clients';
 import { ActivityType, Prisma, Priority, TaskStatus } from '@prisma/client';
 
@@ -46,7 +46,8 @@ export async function POST(request: Request) {
     const priority: Priority = (Object.values(Priority) as string[]).includes(body.priority)
       ? body.priority
       : Priority.MEDIUM;
-    const manualDueDate = dueDateFromInput(body.dueDate);
+    // Default to the next day when no due date is provided.
+    const manualDueDate = dueDateFromInput(body.dueDate) ?? addDaysNoonUTC(new Date(), 1);
 
     const max = await prisma.task.aggregate({
       where: { projectId },
