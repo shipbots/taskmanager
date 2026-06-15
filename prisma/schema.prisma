@@ -1,0 +1,148 @@
+// Task Tracker — data model
+// After editing this file run:  npm run db:push   (syncs tables to Postgres)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("POSTGRES_PRISMA_URL")        // pooled connection (app runtime)
+  directUrl = env("POSTGRES_URL_NON_POOLING")   // direct connection (migrations / db push)
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  BLOCKED
+  COMPLETED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum ActivityType {
+  CREATED
+  STATUS_CHANGED
+  FIELD_CHANGED
+  DUE_DATE_CHANGED
+  SUBTASK_ADDED
+  SUBTASK_COMPLETED
+  SUBTASK_REOPENED
+  SUBTASK_REMOVED
+  TEMPLATE_APPLIED
+  ATTACHMENT_ADDED
+  ATTACHMENT_REMOVED
+  COMMENT
+}
+
+model Project {
+  id                  String     @id @default(cuid())
+  name                String
+  slug                String     @unique
+  color               String     @default("#4f46e5")
+  sortOrder           Int        @default(0)
+  pullsFromOnboarding Boolean    @default(false) // ShipBots mirrors the Onboarding Dashboard
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+  tasks               Task[]
+  templates           Template[]
+}
+
+model Task {
+  id            String       @id @default(cuid())
+  projectId     String
+  project       Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name          String
+  description   String?
+  client        String?
+  status        TaskStatus   @default(PENDING)
+  priority      Priority     @default(MEDIUM)
+  // dueDate = effective due date used for sorting/coloring. When subtasks exist it is
+  // derived from the next unfinished subtask; otherwise it equals manualDueDate.
+  dueDate       DateTime?
+  manualDueDate DateTime?
+  completedAt   DateTime?
+  sortOrder     Int          @default(0)
+  templateId    String?
+  template      Template?    @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  subtasks      Subtask[]
+  attachments   Attachment[]
+  activities    Activity[]
+
+  @@index([projectId])
+  @@index([status])
+  @@index([dueDate])
+}
+
+model Subtask {
+  id          String    @id @default(cuid())
+  taskId      String
+  task        Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  name        String
+  dueDate     DateTime?
+  done        Boolean   @default(false)
+  completedAt DateTime?
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([taskId])
+}
+
+model Template {
+  id          String            @id @default(cuid())
+  name        String
+  description String?
+  projectId   String? // null = available to every project
+  project     Project?          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  items       TemplateSubtask[]
+  tasks       Task[]
+
+  @@index([projectId])
+}
+
+model TemplateSubtask {
+  id         String   @id @default(cuid())
+  templateId String
+  template   Template @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  name       String
+  offsetDays Int? // due date = task creation date + offsetDays (optional)
+  sortOrder  Int      @default(0)
+
+  @@index([templateId])
+}
+
+model Attachment {
+  id          String   @id @default(cuid())
+  taskId      String
+  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  fileName    String
+  url         String
+  pathname    String // Vercel Blob pathname (needed to delete the blob)
+  size        Int
+  contentType String?
+  createdAt   DateTime @default(now())
+
+  @@index([taskId])
+}
+
+model Activity {
+  id        String       @id @default(cuid())
+  taskId    String
+  task      Task         @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  type      ActivityType
+  message   String
+  meta      Json?
+  createdAt DateTime     @default(now())
+
+  @@index([taskId])
+}

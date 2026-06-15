@@ -1,0 +1,13 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "task-tracker",
+      "runtimeExecutable": "/Users/andresmejia/.local/node/bin/node",
+      "runtimeArgs": ["node_modules/.bin/next", "dev", "--port", "3100"],
+      "port": 3100,
+      "autoPort": false,
+      "cwd": "."
+    }
+  ]
+}
