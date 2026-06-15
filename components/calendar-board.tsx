@@ -31,9 +31,9 @@ export function CalendarBoard({
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-6">
-      <div className="flex items-center gap-3 mb-5">
+      <div className="flex flex-wrap items-center gap-3 mb-5">
         <h1 className="text-2xl font-bold text-slate-900">Calendar</h1>
-        <span className="text-sm text-slate-400">Everything, by due date</span>
+        <span className="text-sm text-slate-400 hidden sm:inline">Everything, by due date</span>
         <Button className="ml-auto" onClick={() => setAddOpen(true)}>
           <span className="flex items-center gap-1.5">
             <Plus className="w-4 h-4" /> New task

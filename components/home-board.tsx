@@ -79,9 +79,9 @@ export function HomeBoard({
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-6">
-      <div className="flex items-center gap-3 mb-5">
+      <div className="flex flex-wrap items-center gap-3 mb-5">
         <h1 className="text-2xl font-bold text-slate-900">Home</h1>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-2 flex-wrap">
           <div className="flex items-center bg-slate-100 rounded-lg p-0.5">
             <button
               onClick={() => setView('list')}

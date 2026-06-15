@@ -58,12 +58,12 @@ export function TopNav({
     return (
       <Link
         href={href}
-        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+        className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
           active ? 'bg-slate-100 text-slate-900' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
         }`}
       >
-        <Icon className="w-4 h-4" />
-        {label}
+        <Icon className="w-4 h-4 shrink-0" />
+        <span className="hidden sm:inline">{label}</span>
       </Link>
     );
   };
@@ -88,10 +88,10 @@ export function TopNav({
           <div className="relative" ref={projRef}>
             <button
               onClick={() => setProjOpen((o) => !o)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-slate-500 hover:text-slate-900 hover:bg-slate-50 transition-colors"
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-sm font-medium text-slate-500 hover:text-slate-900 hover:bg-slate-50 transition-colors"
             >
-              <FolderKanban className="w-4 h-4" />
-              Projects
+              <FolderKanban className="w-4 h-4 shrink-0" />
+              <span className="hidden sm:inline">Projects</span>
               <ChevronDown className="w-3.5 h-3.5" />
             </button>
             {projOpen && (

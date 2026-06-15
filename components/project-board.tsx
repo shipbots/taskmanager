@@ -182,7 +182,7 @@ export function ProjectBoard({
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-6">
-      <div className="flex items-center gap-3 mb-5">
+      <div className="flex flex-wrap items-center gap-3 mb-5">
         <span className="w-3.5 h-3.5 rounded-full" style={{ background: project.color }} />
         <h1 className="text-2xl font-bold text-slate-900">{project.name}</h1>
         {project.pullsFromOnboarding && (
@@ -190,7 +190,7 @@ export function ProjectBoard({
             mirrors Onboarding Dashboard
           </span>
         )}
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-2 flex-wrap">
           <div className="flex items-center bg-slate-100 rounded-lg p-0.5">
             <button
               onClick={() => setView('list')}
@@ -213,8 +213,8 @@ export function ProjectBoard({
         </div>
       </div>
 
-      <div className="flex items-center gap-2 mb-4">
-        <div className="relative flex-1 max-w-xs">
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        <div className="relative flex-1 min-w-[180px] max-w-xs">
           <Search className="w-4 h-4 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
           <input
             value={search}

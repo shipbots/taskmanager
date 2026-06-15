@@ -24,11 +24,11 @@ export function Modal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/40 p-4 pt-[8vh] animate-fade-in"
+      className="fixed inset-0 z-50 flex items-end sm:items-start justify-center bg-slate-900/40 sm:p-4 sm:pt-[8vh] animate-fade-in"
       onMouseDown={onClose}
     >
       <div
-        className={`w-full ${width} bg-white rounded-2xl shadow-2xl animate-slide-in-up flex flex-col max-h-[84vh]`}
+        className={`w-full ${width} bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl animate-slide-in-up flex flex-col max-h-[90dvh] sm:max-h-[84vh]`}
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100">
