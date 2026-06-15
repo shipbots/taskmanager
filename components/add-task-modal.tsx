@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { Sparkles } from 'lucide-react';
 import { Modal, Button, inputClass, labelClass } from '@/components/ui';
 import { PRIORITY_ORDER, PRIORITY_META } from '@/lib/types';
 import type { ProjectView, TaskView, TemplateView, Priority } from '@/lib/types';
@@ -33,6 +34,8 @@ export function AddTaskModal({
   const [templates, setTemplates] = useState<TemplateView[]>([]);
   const [clients, setClients] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [notes, setNotes] = useState('');
+  const [drafting, setDrafting] = useState(false);
 
   useEffect(() => {
     fetch('/api/templates')
@@ -86,6 +89,33 @@ export function AddTaskModal({
     }
   }
 
+  async function draft() {
+    if (!notes.trim() || drafting) return;
+    setDrafting(true);
+    try {
+      const res = await fetch('/api/tasks/draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes: notes.trim() }),
+      });
+      if (res.ok) {
+        const d = await res.json();
+        if (d.name) setName(d.name);
+        if (d.client) setClient(d.client);
+        if (d.dueDate) setDueDate(d.dueDate);
+        if (d.priority && (PRIORITY_ORDER as string[]).includes(d.priority)) setPriority(d.priority);
+        if (d.description) setDescription(d.description);
+      } else {
+        const b = await res.json().catch(() => null);
+        alert(b?.error ?? 'Could not draft a task from those notes');
+      }
+    } catch {
+      alert('Could not draft a task from those notes');
+    } finally {
+      setDrafting(false);
+    }
+  }
+
   return (
     <Modal
       title="New task"
@@ -102,6 +132,29 @@ export function AddTaskModal({
       }
     >
       <div className="space-y-3.5">
+        <div className="rounded-lg border border-dashed border-indigo-200 bg-indigo-50/40 p-2.5">
+          <label className="flex items-center gap-1.5 text-xs font-medium text-indigo-600 mb-1.5">
+            <Sparkles className="w-3.5 h-3.5" /> Smart notes — describe the task, I will fill the form
+          </label>
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            rows={2}
+            className={inputClass}
+            placeholder="e.g. Call Acme about the renewal next Tuesday, high priority"
+          />
+          <div className="flex justify-end mt-1.5">
+            <button
+              type="button"
+              onClick={draft}
+              disabled={!notes.trim() || drafting}
+              className="flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-lg bg-[var(--accent)] text-white disabled:opacity-50"
+            >
+              <Sparkles className="w-3.5 h-3.5" /> {drafting ? 'Thinking…' : 'Fill from notes'}
+            </button>
+          </div>
+        </div>
+
         <div>
           <label className={labelClass}>Task name</label>
           <input

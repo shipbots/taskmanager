@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -23,6 +23,7 @@ import {
   Trash2,
   Check,
   X,
+  Users,
 } from 'lucide-react';
 import type { ProjectView, StatusView, TaskView } from '@/lib/types';
 import { TaskRow } from '@/components/task-row';
@@ -45,15 +46,62 @@ export function ProjectBoard({
 }) {
   const [tasks, setTasks] = useState(initialTasks);
   const [statuses, setStatuses] = useState(initialStatuses);
-  const [view, setView] = useState<'list' | 'kanban'>('list');
+  const [view, setView] = useState<'list' | 'kanban' | 'clients'>('list');
   const [open, setOpen] = useState<TaskView | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [showCompleted, setShowCompleted] = useState(false);
   const [search, setSearch] = useState('');
   const [clientFilter, setClientFilter] = useState('');
+  const [clients, setClients] = useState<{ id: string; name: string }[]>([]);
+  const [clientSearch, setClientSearch] = useState('');
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+
+  // ShipBots pulls its client list from the Monday Clients board; native projects
+  // use their own saved clients.
+  const loadClients = useCallback(async () => {
+    const url = project.pullsFromOnboarding
+      ? '/api/shipbots/clients'
+      : `/api/clients?projectId=${project.id}`;
+    try {
+      const res = await fetch(url);
+      const data = res.ok ? await res.json() : [];
+      if (Array.isArray(data)) setClients(data);
+    } catch {
+      /* ignore */
+    }
+  }, [project.id, project.pullsFromOnboarding]);
+  useEffect(() => {
+    loadClients();
+  }, [loadClients]);
+
+  const clientCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const t of tasks) if (t.client) m.set(t.client, (m.get(t.client) ?? 0) + 1);
+    return m;
+  }, [tasks]);
+
+  async function renameClient(id: string, oldName: string, newName: string) {
+    const trimmed = newName.trim();
+    if (!trimmed || trimmed === oldName) return;
+    const res = await fetch(`/api/clients/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: trimmed }),
+    });
+    if (!res.ok) {
+      alert('Could not rename client');
+      return;
+    }
+    setTasks((prev) => prev.map((t) => (t.client === oldName ? { ...t, client: trimmed } : t)));
+    loadClients();
+  }
+
+  function openClient(name: string) {
+    setClientFilter(name);
+    setView('list');
+  }
 
   const clientOptions = useMemo(
     () => Array.from(new Set(tasks.map((t) => t.client).filter((c): c is string => !!c))).sort(),
@@ -204,6 +252,12 @@ export function ProjectBoard({
             >
               <KanbanSquare className="w-4 h-4" /> Kanban
             </button>
+            <button
+              onClick={() => setView('clients')}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-sm font-medium ${view === 'clients' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500'}`}
+            >
+              <Users className="w-4 h-4" /> Clients
+            </button>
           </div>
           <Button onClick={() => setAddOpen(true)}>
             <span className="flex items-center gap-1.5">
@@ -213,7 +267,8 @@ export function ProjectBoard({
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 mb-4">
+      {view !== 'clients' && (
+        <div className="flex flex-wrap items-center gap-2 mb-4">
         <div className="relative flex-1 min-w-[180px] max-w-xs">
           <Search className="w-4 h-4 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
           <input
@@ -242,9 +297,20 @@ export function ProjectBoard({
             {filtered.length} match{filtered.length === 1 ? '' : 'es'}
           </span>
         )}
-      </div>
+        </div>
+      )}
 
-      {view === 'list' ? (
+      {view === 'clients' ? (
+        <ClientsPanel
+          clients={clients}
+          counts={clientCounts}
+          editable={!project.pullsFromOnboarding}
+          search={clientSearch}
+          onSearch={setClientSearch}
+          onRename={renameClient}
+          onOpen={openClient}
+        />
+      ) : view === 'list' ? (
         <div className="space-y-1.5">
           {listTasks.length === 0 ? (
             <p className="text-sm text-slate-400 py-8 text-center">No tasks yet. Create your first one.</p>
@@ -460,6 +526,123 @@ function DraggableCard({ task, onOpen }: { task: TaskView; onOpen: () => void })
       className={`cursor-pointer ${isDragging ? 'opacity-40' : ''}`}
     >
       <TaskCard task={task} />
+    </div>
+  );
+}
+
+function ClientsPanel({
+  clients,
+  counts,
+  editable,
+  search,
+  onSearch,
+  onRename,
+  onOpen,
+}: {
+  clients: { id: string; name: string }[];
+  counts: Map<string, number>;
+  editable: boolean;
+  search: string;
+  onSearch: (s: string) => void;
+  onRename: (id: string, oldName: string, newName: string) => void;
+  onOpen: (name: string) => void;
+}) {
+  const q = search.trim().toLowerCase();
+  const rows = clients
+    .filter((c) => !q || c.name.toLowerCase().includes(q))
+    .map((c) => ({ ...c, count: counts.get(c.name) ?? 0 }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+
+  return (
+    <div className="mx-auto max-w-2xl">
+      <div className="relative max-w-xs mb-3">
+        <Search className="w-4 h-4 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+        <input
+          value={search}
+          onChange={(e) => onSearch(e.target.value)}
+          placeholder="Search clients…"
+          className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 text-sm focus:outline-none focus:border-[var(--accent)]"
+        />
+      </div>
+      <div className="space-y-1.5">
+        {rows.length === 0 ? (
+          <p className="text-sm text-slate-400 py-8 text-center">No clients yet.</p>
+        ) : (
+          rows.map((c) => (
+            <ClientRow
+              key={c.id}
+              client={c}
+              editable={editable}
+              onRename={onRename}
+              onOpen={onOpen}
+            />
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ClientRow({
+  client,
+  editable,
+  onRename,
+  onOpen,
+}: {
+  client: { id: string; name: string; count: number };
+  editable: boolean;
+  onRename: (id: string, oldName: string, newName: string) => void;
+  onOpen: (name: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(client.name);
+
+  function save() {
+    setEditing(false);
+    if (name.trim() && name.trim() !== client.name) onRename(client.id, client.name, name.trim());
+    else setName(client.name);
+  }
+
+  return (
+    <div className="group flex items-center gap-3 bg-white rounded-xl border border-slate-100 px-3 py-2.5 hover:border-slate-300 transition">
+      {editing ? (
+        <input
+          autoFocus
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onBlur={save}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') save();
+            if (e.key === 'Escape') {
+              setName(client.name);
+              setEditing(false);
+            }
+          }}
+          className="flex-1 text-sm border border-slate-300 rounded px-1.5 py-0.5 focus:outline-none focus:border-[var(--accent)]"
+        />
+      ) : (
+        <button
+          onClick={() => onOpen(client.name)}
+          className="flex-1 text-left text-sm font-medium text-slate-800 hover:text-[var(--accent)] truncate"
+        >
+          {client.name}
+        </button>
+      )}
+      <span className="text-xs text-slate-400 shrink-0">
+        {client.count} task{client.count === 1 ? '' : 's'}
+      </span>
+      {editable && !editing && (
+        <button
+          onClick={() => {
+            setName(client.name);
+            setEditing(true);
+          }}
+          className="opacity-0 group-hover:opacity-100 p-1 rounded text-slate-300 hover:text-slate-600 shrink-0"
+          title="Rename client"
+        >
+          <Pencil className="w-3.5 h-3.5" />
+        </button>
+      )}
     </div>
   );
 }

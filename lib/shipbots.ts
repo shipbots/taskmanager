@@ -16,6 +16,18 @@ interface OnboardingSubItem {
   parentItemName?: string;
 }
 
+// "My" emails — onboarding tasks assigned to anyone outside this set (and not
+// unassigned) are hidden. Falls back to ALLOWED_EMAILS.
+function myAssigneeEmails(): Set<string> {
+  const raw = process.env.SHIPBOTS_MY_EMAILS || process.env.ALLOWED_EMAILS || '';
+  return new Set(
+    raw
+      .split(',')
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean),
+  );
+}
+
 function pickStatus(mondayStatus: string, statuses: StatusView[]): StatusView | undefined {
   const v = (mondayStatus || '').toLowerCase();
   const has = (kw: string) => statuses.find((s) => s.name.toLowerCase().includes(kw));
@@ -43,7 +55,14 @@ export async function fetchShipbotsTasks(
     const items = (await res.json()) as OnboardingSubItem[];
     if (!Array.isArray(items)) return [];
 
-    return items.map((it): TaskView => {
+    // Show unassigned tasks and tasks assigned to me; hide ones assigned to others.
+    const mine = myAssigneeEmails();
+    const visible = items.filter((it) => {
+      const emails = (it.assigneeEmails ?? []).map((e) => e.toLowerCase());
+      return emails.length === 0 || emails.some((e) => mine.has(e));
+    });
+
+    return visible.map((it): TaskView => {
       const due = it.dueDate ? parseDateInput(it.dueDate).toISOString() : null;
       const st = pickStatus(it.status, ordered) ?? firstStatus;
       return {
