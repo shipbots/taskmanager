@@ -1,7 +1,11 @@
-import { TaskStatus } from '@prisma/client';
-
 // Pure derivation logic shared by API routes. Kept free of Prisma queries so it
 // is easy to reason about and test.
+
+export interface StatusLite {
+  name: string;
+  isDone: boolean;
+  sortOrder: number;
+}
 
 export interface DeriveSubtask {
   done: boolean;
@@ -28,21 +32,26 @@ export function effectiveDueDate(
 }
 
 /**
- * Auto-advance status from subtask completion:
- *  - no subtasks            → status stays whatever the user set (fully manual)
- *  - all subtasks done      → COMPLETED
- *  - manual BLOCKED         → stays BLOCKED until everything is done
- *  - some done (not all)    → IN_PROGRESS
- *  - none done              → PENDING
+ * Auto-advance status from subtask completion against a project's columns:
+ *  - no subtasks         → keep whatever the user set (fully manual)
+ *  - all subtasks done   → the Done column
+ *  - reopened (was Done, not all done) → the first column
+ *  - otherwise           → keep current (manual column choices are preserved)
  */
 export function deriveStatus(
-  current: TaskStatus,
+  statuses: StatusLite[],
+  current: string,
   subtasks: { done: boolean }[],
-): TaskStatus {
+): string {
   if (subtasks.length === 0) return current;
-  if (subtasks.every((s) => s.done)) return TaskStatus.COMPLETED;
-  if (current === TaskStatus.BLOCKED) return TaskStatus.BLOCKED;
-  return subtasks.some((s) => s.done) ? TaskStatus.IN_PROGRESS : TaskStatus.PENDING;
+  const ordered = [...statuses].sort(
+    (a, b) => Number(a.isDone) - Number(b.isDone) || a.sortOrder - b.sortOrder,
+  );
+  const done = ordered.find((s) => s.isDone);
+  const first = ordered[0];
+  if (subtasks.every((s) => s.done)) return done?.name ?? current;
+  if (done && current === done.name) return first?.name ?? current;
+  return current;
 }
 
 /** Index of the active subtask = first not-done in sort order, or -1. */

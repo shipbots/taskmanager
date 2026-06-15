@@ -5,8 +5,8 @@ import { effectiveDueDate } from '@/lib/task-derive';
 import { serializeTask } from '@/lib/serialize';
 import { TASK_DETAIL_INCLUDE, logActivity } from '@/lib/task-service';
 import { saveClient } from '@/lib/clients';
-import { ActivityType, Priority, TaskStatus, type Prisma } from '@prisma/client';
-import { STATUS_META, PRIORITY_META } from '@/lib/types';
+import { ActivityType, Priority, type Prisma } from '@prisma/client';
+import { PRIORITY_META } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -56,20 +56,17 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       });
     }
 
-    // Manual status change (e.g. Kanban drag). Overrides auto-advance until the
-    // next subtask change re-derives it.
-    if (
-      typeof body.status === 'string' &&
-      (Object.values(TaskStatus) as string[]).includes(body.status) &&
-      body.status !== existing.status
-    ) {
-      const status = body.status as TaskStatus;
-      data.status = status;
-      data.completedAt = status === TaskStatus.COMPLETED ? existing.completedAt ?? new Date() : null;
-      logs.push({
-        type: ActivityType.STATUS_CHANGED,
-        message: `Status → ${STATUS_META[status].label}`,
+    // Manual status change (e.g. Kanban drag). Must match a column in this
+    // project; completedAt tracks whether that column is the Done column.
+    if (typeof body.status === 'string' && body.status && body.status !== existing.status) {
+      const target = await prisma.status.findFirst({
+        where: { projectId: existing.projectId, name: body.status },
       });
+      if (target) {
+        data.status = target.name;
+        data.completedAt = target.isDone ? existing.completedAt ?? new Date() : null;
+        logs.push({ type: ActivityType.STATUS_CHANGED, message: `Status → ${target.name}` });
+      }
     }
 
     // Manual due date — recompute effective date against subtasks (status untouched).

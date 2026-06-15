@@ -4,7 +4,8 @@ import { dueDateFromInput } from '@/lib/dates';
 import { serializeTask } from '@/lib/serialize';
 import { TASK_LIST_INCLUDE, TASK_DETAIL_INCLUDE, applyTemplateToTask, logActivity, addDaysNoonUTC } from '@/lib/task-service';
 import { saveClient } from '@/lib/clients';
-import { ActivityType, Prisma, Priority, TaskStatus } from '@prisma/client';
+import { ActivityType, Prisma, Priority } from '@prisma/client';
+import { ensureStatuses, firstStatusName } from '@/lib/statuses';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,6 +44,7 @@ export async function POST(request: Request) {
     }
     if (!projectId) return badRequest('A project is required');
 
+    const defaultStatus = firstStatusName(await ensureStatuses(projectId));
     const priority: Priority = (Object.values(Priority) as string[]).includes(body.priority)
       ? body.priority
       : Priority.MEDIUM;
@@ -62,7 +64,7 @@ export async function POST(request: Request) {
         description: body.description ? String(body.description) : null,
         client: body.client ? String(body.client) : null,
         priority,
-        status: TaskStatus.PENDING,
+        status: defaultStatus,
         manualDueDate,
         dueDate: manualDueDate,
         sortOrder,

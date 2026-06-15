@@ -12,26 +12,39 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core';
-import { Plus, LayoutList, KanbanSquare, ChevronDown, ChevronRight, Search } from 'lucide-react';
-import type { ProjectView, TaskView, TaskStatus } from '@/lib/types';
-import { STATUS_ORDER, STATUS_META } from '@/lib/types';
+import {
+  Plus,
+  LayoutList,
+  KanbanSquare,
+  ChevronDown,
+  ChevronRight,
+  Search,
+  Pencil,
+  Trash2,
+  Check,
+  X,
+} from 'lucide-react';
+import type { ProjectView, StatusView, TaskView } from '@/lib/types';
 import { TaskRow } from '@/components/task-row';
 import { TaskCard } from '@/components/task-card';
 import { TaskDrawer } from '@/components/task-drawer';
 import { AddTaskModal } from '@/components/add-task-modal';
 import { Button } from '@/components/ui';
-import { sortByUrgency, groupByStatus } from '@/lib/sort';
+import { sortByUrgency, groupByStatus, orderStatuses } from '@/lib/sort';
 
 export function ProjectBoard({
   project,
+  statuses: initialStatuses,
   tasks: initialTasks,
   projects,
 }: {
   project: ProjectView;
+  statuses: StatusView[];
   tasks: TaskView[];
   projects: ProjectView[];
 }) {
   const [tasks, setTasks] = useState(initialTasks);
+  const [statuses, setStatuses] = useState(initialStatuses);
   const [view, setView] = useState<'list' | 'kanban'>('list');
   const [open, setOpen] = useState<TaskView | null>(null);
   const [addOpen, setAddOpen] = useState(false);
@@ -56,7 +69,8 @@ export function ProjectBoard({
     });
   }, [tasks, search, clientFilter]);
   const listTasks = useMemo(() => sortByUrgency(filtered), [filtered]);
-  const grouped = useMemo(() => groupByStatus(filtered), [filtered]);
+  const columns = useMemo(() => groupByStatus(filtered, statuses), [filtered, statuses]);
+  const nonDoneCount = statuses.filter((s) => !s.isDone).length;
   const activeTask = activeId ? tasks.find((t) => t.id === activeId) ?? null : null;
 
   function upsertTask(task: TaskView) {
@@ -72,37 +86,98 @@ export function ProjectBoard({
     setTasks((prev) => prev.filter((t) => t.id !== id));
   }
 
-  async function move(task: TaskView, status: TaskStatus) {
-    if (task.status === status || task.readOnly) return;
-    setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status } : t)));
+  async function move(task: TaskView, statusName: string) {
+    if (task.status === statusName || task.readOnly) return;
+    const target = statuses.find((s) => s.name === statusName);
+    setTasks((prev) =>
+      prev.map((t) =>
+        t.id === task.id
+          ? { ...t, status: statusName, statusColor: target?.color ?? t.statusColor, isDone: target?.isDone ?? false }
+          : t,
+      ),
+    );
     try {
       const res = await fetch(`/api/tasks/${task.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ status: statusName }),
       });
       if (res.ok) {
         const updated = await res.json();
         setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
       } else {
-        setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status: task.status } : t)));
+        setTasks((prev) => prev.map((t) => (t.id === task.id ? task : t)));
       }
     } catch {
-      setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status: task.status } : t)));
+      setTasks((prev) => prev.map((t) => (t.id === task.id ? task : t)));
     }
   }
 
   function toggleComplete(task: TaskView) {
-    const target =
-      task.status === 'COMPLETED' ? (task.subtaskCount > 0 ? 'IN_PROGRESS' : 'PENDING') : 'COMPLETED';
-    move(task, target);
+    const done = statuses.find((s) => s.isDone);
+    const first = orderStatuses(statuses)[0];
+    const target = task.isDone ? first?.name : done?.name;
+    if (target) move(task, target);
   }
 
   function onDragEnd(e: DragEndEvent) {
     setActiveId(null);
-    const overId = e.over?.id as TaskStatus | undefined;
+    const overName = e.over?.id as string | undefined;
     const task = tasks.find((t) => t.id === e.active.id);
-    if (task && overId && STATUS_ORDER.includes(overId)) move(task, overId);
+    if (task && overName && statuses.some((s) => s.name === overName)) move(task, overName);
+  }
+
+  // ── Column CRUD ──
+  async function addColumn(name: string) {
+    const res = await fetch('/api/statuses', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId: project.id, name }),
+    });
+    if (res.ok) {
+      const created = await res.json();
+      setStatuses((prev) => [...prev, created]);
+    } else {
+      const body = await res.json().catch(() => null);
+      alert(body?.error ?? 'Could not add column');
+    }
+  }
+  async function renameColumn(id: string, name: string) {
+    const old = statuses.find((s) => s.id === id);
+    const res = await fetch(`/api/statuses/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    if (res.ok) {
+      const updated = await res.json();
+      setStatuses((prev) => prev.map((s) => (s.id === id ? updated : s)));
+      if (old) setTasks((prev) => prev.map((t) => (t.status === old.name ? { ...t, status: updated.name } : t)));
+    } else {
+      const body = await res.json().catch(() => null);
+      alert(body?.error ?? 'Could not rename column');
+    }
+  }
+  async function deleteColumn(id: string) {
+    const st = statuses.find((s) => s.id === id);
+    if (!st || !confirm(`Delete the "${st.name}" column? Its tasks move to the first column.`)) return;
+    const res = await fetch(`/api/statuses/${id}`, { method: 'DELETE' });
+    if (res.ok) {
+      const remaining = statuses.filter((s) => s.id !== id);
+      setStatuses(remaining);
+      const first = orderStatuses(remaining)[0];
+      if (first)
+        setTasks((prev) =>
+          prev.map((t) =>
+            t.status === st.name
+              ? { ...t, status: first.name, statusColor: first.color, isDone: first.isDone }
+              : t,
+          ),
+        );
+    } else {
+      const body = await res.json().catch(() => null);
+      alert(body?.error ?? 'Could not delete column');
+    }
   }
 
   return (
@@ -190,17 +265,21 @@ export function ProjectBoard({
           onDragStart={(e: DragStartEvent) => setActiveId(e.active.id as string)}
           onDragEnd={onDragEnd}
         >
-          <div className="flex gap-3 overflow-x-auto pb-2">
-            {STATUS_ORDER.map((status) => (
+          <div className="flex gap-3 overflow-x-auto pb-2 items-start">
+            {columns.map(({ status, tasks: colTasks }) => (
               <Column
-                key={status}
+                key={status.id}
                 status={status}
-                tasks={grouped[status]}
-                collapsed={status === 'COMPLETED' && !showCompleted}
-                onToggleCollapse={status === 'COMPLETED' ? () => setShowCompleted((s) => !s) : undefined}
-                onOpen={(t) => setOpen(t)}
+                tasks={colTasks}
+                collapsed={status.isDone && !showCompleted}
+                onToggleCollapse={status.isDone ? () => setShowCompleted((s) => !s) : undefined}
+                canDelete={!status.isDone && nonDoneCount > 1}
+                onRename={renameColumn}
+                onDelete={deleteColumn}
+                onOpen={setOpen}
               />
             ))}
+            <AddColumn onAdd={addColumn} />
           </div>
           <DragOverlay>{activeTask ? <TaskCard task={activeTask} /> : null}</DragOverlay>
         </DndContext>
@@ -232,42 +311,135 @@ function Column({
   tasks,
   collapsed,
   onToggleCollapse,
+  canDelete,
+  onRename,
+  onDelete,
   onOpen,
 }: {
-  status: TaskStatus;
+  status: StatusView;
   tasks: TaskView[];
   collapsed?: boolean;
   onToggleCollapse?: () => void;
+  canDelete: boolean;
+  onRename: (id: string, name: string) => void;
+  onDelete: (id: string) => void;
   onOpen: (task: TaskView) => void;
 }) {
-  const { setNodeRef, isOver } = useDroppable({ id: status });
+  const { setNodeRef, isOver } = useDroppable({ id: status.name });
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(status.name);
+
+  function save() {
+    setEditing(false);
+    const trimmed = name.trim();
+    if (trimmed && trimmed !== status.name) onRename(status.id, trimmed);
+    else setName(status.name);
+  }
+
   return (
     <div className="w-72 shrink-0">
-      <button
-        onClick={onToggleCollapse}
-        disabled={!onToggleCollapse}
-        className="w-full flex items-center gap-2 px-2 py-1.5 mb-2"
+      <div className="flex items-center gap-2 px-2 py-1.5 mb-2 group/col">
+        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: status.color }} />
+        {editing ? (
+          <input
+            autoFocus
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onBlur={save}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') save();
+              if (e.key === 'Escape') {
+                setName(status.name);
+                setEditing(false);
+              }
+            }}
+            className="text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded px-1.5 py-0.5 min-w-0 flex-1 focus:outline-none focus:border-[var(--accent)]"
+          />
+        ) : (
+          <>
+            <span className="text-sm font-semibold text-slate-700">{status.name}</span>
+            <span className="text-xs text-slate-400">{tasks.length}</span>
+            <button
+              onClick={() => {
+                setName(status.name);
+                setEditing(true);
+              }}
+              className="opacity-0 group-hover/col:opacity-100 p-0.5 rounded text-slate-300 hover:text-slate-600"
+              title="Rename column"
+            >
+              <Pencil className="w-3.5 h-3.5" />
+            </button>
+            {canDelete && (
+              <button
+                onClick={() => onDelete(status.id)}
+                className="opacity-0 group-hover/col:opacity-100 p-0.5 rounded text-slate-300 hover:text-red-500"
+                title="Delete column"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            )}
+            {onToggleCollapse && (
+              <button onClick={onToggleCollapse} className="ml-auto p-0.5 text-slate-400">
+                {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </button>
+            )}
+          </>
+        )}
+      </div>
+
+      <div
+        ref={setNodeRef}
+        className={`rounded-xl p-2 transition-colors ${isOver ? 'bg-indigo-50' : 'bg-slate-50/60'} ${collapsed ? 'min-h-[44px]' : 'min-h-[120px] space-y-2'}`}
       >
-        <span className={`w-2 h-2 rounded-full ${STATUS_META[status].dot}`} />
-        <span className="text-sm font-semibold text-slate-700">{STATUS_META[status].label}</span>
-        <span className="text-xs text-slate-400">{tasks.length}</span>
-        {onToggleCollapse &&
-          (collapsed ? (
-            <ChevronRight className="w-4 h-4 text-slate-400 ml-auto" />
-          ) : (
-            <ChevronDown className="w-4 h-4 text-slate-400 ml-auto" />
-          ))}
-      </button>
-      {!collapsed && (
-        <div
-          ref={setNodeRef}
-          className={`space-y-2 min-h-[120px] rounded-xl p-2 transition-colors ${isOver ? 'bg-indigo-50' : 'bg-slate-50/60'}`}
+        {collapsed ? (
+          <div className="text-xs text-slate-400 px-1 py-1">{tasks.length} done — drop here to complete</div>
+        ) : (
+          <>
+            {tasks.map((task) => (
+              <DraggableCard key={task.id} task={task} onOpen={() => onOpen(task)} />
+            ))}
+            {tasks.length === 0 && <div className="h-16" />}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AddColumn({ onAdd }: { onAdd: (name: string) => void }) {
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState('');
+  function save() {
+    const trimmed = name.trim();
+    if (trimmed) onAdd(trimmed);
+    setName('');
+    setAdding(false);
+  }
+  return (
+    <div className="w-56 shrink-0">
+      {adding ? (
+        <input
+          autoFocus
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onBlur={save}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') save();
+            if (e.key === 'Escape') {
+              setName('');
+              setAdding(false);
+            }
+          }}
+          placeholder="Column name…"
+          className="w-full text-sm border border-slate-300 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-[var(--accent)]"
+        />
+      ) : (
+        <button
+          onClick={() => setAdding(true)}
+          className="w-full flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-dashed border-slate-300 text-sm text-slate-400 hover:text-slate-700 hover:border-slate-400"
         >
-          {tasks.map((task) => (
-            <DraggableCard key={task.id} task={task} onOpen={() => onOpen(task)} />
-          ))}
-          {tasks.length === 0 && <div className="h-16" />}
-        </div>
+          <Plus className="w-4 h-4" /> Add column
+        </button>
       )}
     </div>
   );

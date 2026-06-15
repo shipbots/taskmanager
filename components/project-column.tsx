@@ -26,8 +26,8 @@ export function ProjectColumn({
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(project.name);
 
-  const open = sortByUrgency(tasks.filter((t) => t.status !== 'COMPLETED'));
-  const completed = sortByUrgency(tasks.filter((t) => t.status === 'COMPLETED'));
+  const open = sortByUrgency(tasks.filter((t) => !t.isDone));
+  const completed = sortByUrgency(tasks.filter((t) => t.isDone));
 
   async function saveName() {
     setEditing(false);

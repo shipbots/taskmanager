@@ -99,7 +99,7 @@ export function CalendarView({
                   <button
                     key={t.id}
                     onClick={() => onSelect(t)}
-                    className={`w-full text-left text-[11px] leading-tight px-1.5 py-0.5 rounded truncate ${t.status === 'COMPLETED' ? 'line-through opacity-50' : ''}`}
+                    className={`w-full text-left text-[11px] leading-tight px-1.5 py-0.5 rounded truncate ${t.isDone ? 'line-through opacity-50' : ''}`}
                     style={{ background: `${t.projectColor ?? '#64748b'}1a`, color: t.projectColor ?? '#475569' }}
                     title={`${t.name}${t.client ? ` · ${t.client}` : ''}`}
                   >

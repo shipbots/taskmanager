@@ -1,7 +1,7 @@
 'use client';
 
 import type { TaskView } from '@/lib/types';
-import { STATUS_META, PRIORITY_META } from '@/lib/types';
+import { PRIORITY_META, statusPillStyle } from '@/lib/types';
 import { classifyUrgency, formatDueDate, urgencyTextClass } from '@/lib/dates';
 import { importanceAccent } from '@/lib/sort';
 import { Paperclip, Check } from 'lucide-react';
@@ -19,7 +19,7 @@ export function TaskRow({
 }) {
   const urgency = classifyUrgency(task.dueDate);
   const due = formatDueDate(task.dueDate);
-  const completed = task.status === 'COMPLETED';
+  const completed = task.isDone;
   const canComplete = !!onToggleComplete && !task.readOnly;
 
   return (
@@ -82,9 +82,10 @@ export function TaskRow({
         )}
         {!compact && (
           <span
-            className={`text-[10px] px-2 py-0.5 rounded-full shrink-0 ${STATUS_META[task.status].badge}`}
+            className="text-[10px] px-2 py-0.5 rounded-full shrink-0 font-medium"
+            style={statusPillStyle(task.statusColor)}
           >
-            {STATUS_META[task.status].label}
+            {task.status}
           </span>
         )}
       </button>

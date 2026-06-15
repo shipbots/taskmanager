@@ -1,12 +1,12 @@
-import type { TaskView, TaskStatus } from '@/lib/types';
-import { PRIORITY_META, STATUS_ORDER } from '@/lib/types';
+import type { TaskView, StatusView } from '@/lib/types';
+import { PRIORITY_META } from '@/lib/types';
 import { classifyUrgency } from '@/lib/dates';
 
-/** Order by urgency: completed sink, then by due date (earliest first), then priority. */
+/** Order by urgency: done tasks sink, then by due date (earliest first), then priority. */
 export function sortByUrgency(tasks: TaskView[]): TaskView[] {
   return [...tasks].sort((a, b) => {
-    const ac = a.status === 'COMPLETED' ? 1 : 0;
-    const bc = b.status === 'COMPLETED' ? 1 : 0;
+    const ac = a.isDone ? 1 : 0;
+    const bc = b.isDone ? 1 : 0;
     if (ac !== bc) return ac - bc;
 
     const ad = a.dueDate;
@@ -22,21 +22,38 @@ export function sortByUrgency(tasks: TaskView[]): TaskView[] {
   });
 }
 
-export function groupByStatus(tasks: TaskView[]): Record<TaskStatus, TaskView[]> {
-  const groups: Record<TaskStatus, TaskView[]> = {
-    PENDING: [],
-    IN_PROGRESS: [],
-    BLOCKED: [],
-    COMPLETED: [],
-  };
-  for (const t of tasks) groups[t.status].push(t);
-  for (const k of STATUS_ORDER) groups[k] = sortByUrgency(groups[k]);
-  return groups;
+export function orderStatuses(statuses: StatusView[]): StatusView[] {
+  return [...statuses].sort(
+    (a, b) =>
+      Number(a.isDone) - Number(b.isDone) ||
+      a.sortOrder - b.sortOrder ||
+      a.name.localeCompare(b.name),
+  );
+}
+
+export interface StatusColumn {
+  status: StatusView;
+  tasks: TaskView[];
+}
+
+/**
+ * Group tasks into the project's columns (ordered, Done last). Tasks whose
+ * status name doesn't match any column fall into the first column.
+ */
+export function groupByStatus(tasks: TaskView[], statuses: StatusView[]): StatusColumn[] {
+  const ordered = orderStatuses(statuses);
+  const map = new Map<string, TaskView[]>();
+  for (const s of ordered) map.set(s.name, []);
+  const fallback = ordered[0]?.name ?? '';
+  for (const t of tasks) {
+    (map.get(t.status) ?? map.get(fallback))?.push(t);
+  }
+  return ordered.map((s) => ({ status: s, tasks: sortByUrgency(map.get(s.name) ?? []) }));
 }
 
 /** Left-border accent reflecting importance (urgency first, then priority). */
 export function importanceAccent(task: TaskView): string {
-  if (task.status === 'COMPLETED') return '#cbd5e1';
+  if (task.isDone) return '#cbd5e1';
   const u = classifyUrgency(task.dueDate);
   if (u === 'overdue') return '#dc2626';
   if (u === 'today') return '#2563eb';
@@ -46,5 +63,5 @@ export function importanceAccent(task: TaskView): string {
 }
 
 export function openTaskCount(tasks: TaskView[]): number {
-  return tasks.filter((t) => t.status !== 'COMPLETED').length;
+  return tasks.filter((t) => !t.isDone).length;
 }

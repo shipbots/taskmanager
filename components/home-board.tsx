@@ -2,14 +2,23 @@
 
 import { useState } from 'react';
 import { Plus, FolderPlus, LayoutList, CalendarDays } from 'lucide-react';
-import type { ProjectView, TaskView } from '@/lib/types';
+import type { ProjectView, TaskView, StatusView } from '@/lib/types';
 import type { ProjectSection } from '@/lib/load';
+
+// Optimistic columns for a just-created project (server seeds the real ones).
+const DEFAULT_COLUMNS: StatusView[] = [
+  { id: 'pending', name: 'Pending', color: '#94a3b8', sortOrder: 0, isDone: false },
+  { id: 'in-progress', name: 'In Progress', color: '#3b82f6', sortOrder: 1, isDone: false },
+  { id: 'blocked', name: 'Blocked', color: '#f59e0b', sortOrder: 2, isDone: false },
+  { id: 'done', name: 'Done', color: '#22c55e', sortOrder: 3, isDone: true },
+];
 import { ProjectColumn } from '@/components/project-column';
 import { TaskDrawer } from '@/components/task-drawer';
 import { AddTaskModal } from '@/components/add-task-modal';
 import { AddProjectModal } from '@/components/add-project-modal';
 import { CalendarView } from '@/components/calendar-view';
 import { Button } from '@/components/ui';
+import { orderStatuses } from '@/lib/sort';
 
 export function HomeBoard({
   sections: initialSections,
@@ -43,9 +52,12 @@ export function HomeBoard({
 
   async function toggleComplete(task: TaskView) {
     if (task.readOnly) return;
-    const target =
-      task.status === 'COMPLETED' ? (task.subtaskCount > 0 ? 'IN_PROGRESS' : 'PENDING') : 'COMPLETED';
-    upsertTask({ ...task, status: target }); // optimistic
+    const statuses = sections.find((s) => s.project.id === task.projectId)?.statuses ?? [];
+    const done = statuses.find((s) => s.isDone);
+    const first = orderStatuses(statuses)[0];
+    const target = task.isDone ? first?.name : done?.name;
+    if (!target || target === task.status) return;
+    upsertTask({ ...task, status: target, isDone: !task.isDone }); // optimistic
     try {
       const res = await fetch(`/api/tasks/${task.id}`, {
         method: 'PATCH',
@@ -148,7 +160,7 @@ export function HomeBoard({
           onClose={() => setAddProjectOpen(false)}
           onCreated={(p) => {
             setProjects((prev) => [...prev, p]);
-            setSections((prev) => [...prev, { project: p, tasks: [] }]);
+            setSections((prev) => [...prev, { project: p, statuses: DEFAULT_COLUMNS, tasks: [] }]);
           }}
         />
       )}

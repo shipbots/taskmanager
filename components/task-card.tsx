@@ -9,7 +9,7 @@ import { Paperclip, ListChecks } from 'lucide-react';
 export function TaskCard({ task }: { task: TaskView }) {
   const urgency = classifyUrgency(task.dueDate);
   const due = formatDueDate(task.dueDate);
-  const completed = task.status === 'COMPLETED';
+  const completed = task.isDone;
 
   return (
     <div

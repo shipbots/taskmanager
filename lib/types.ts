@@ -2,7 +2,8 @@
 // this can be imported from client components. String unions mirror the Prisma
 // enums exactly.
 
-export type TaskStatus = 'PENDING' | 'IN_PROGRESS' | 'BLOCKED' | 'COMPLETED';
+// Status is now a free-form, per-project name (see the Status model).
+export type TaskStatus = string;
 export type Priority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
 export type TaskSource = 'native' | 'shipbots';
 
@@ -57,6 +58,8 @@ export interface TaskView {
   description: string | null;
   client: string | null;
   status: TaskStatus;
+  statusColor: string;
+  isDone: boolean;
   priority: Priority;
   dueDate: string | null;
   manualDueDate: string | null;
@@ -89,6 +92,14 @@ export interface ClientView {
   name: string;
 }
 
+export interface StatusView {
+  id: string;
+  name: string;
+  color: string;
+  sortOrder: number;
+  isDone: boolean;
+}
+
 export interface TemplateItemView {
   id: string;
   name: string;
@@ -106,14 +117,10 @@ export interface TemplateView {
 
 // ─── UI metadata ──────────────────────────────────────────────────────────────
 
-export const STATUS_ORDER: TaskStatus[] = ['PENDING', 'IN_PROGRESS', 'BLOCKED', 'COMPLETED'];
-
-export const STATUS_META: Record<TaskStatus, { label: string; badge: string; dot: string }> = {
-  PENDING: { label: 'Pending', badge: 'bg-slate-100 text-slate-600', dot: 'bg-slate-400' },
-  IN_PROGRESS: { label: 'In Progress', badge: 'bg-blue-100 text-blue-700', dot: 'bg-blue-500' },
-  BLOCKED: { label: 'Blocked', badge: 'bg-amber-100 text-amber-700', dot: 'bg-amber-500' },
-  COMPLETED: { label: 'Completed', badge: 'bg-green-100 text-green-700', dot: 'bg-green-500' },
-};
+/** Light tint background + readable text for a status pill, from its hex color. */
+export function statusPillStyle(color: string): { backgroundColor: string; color: string } {
+  return { backgroundColor: `${color}22`, color };
+}
 
 export const PRIORITY_ORDER: Priority[] = ['URGENT', 'HIGH', 'MEDIUM', 'LOW'];
 

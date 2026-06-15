@@ -1,8 +1,10 @@
-import type { TaskView, TaskStatus } from '@/lib/types';
+import type { TaskView, ProjectView, StatusView } from '@/lib/types';
 import { parseDateInput } from '@/lib/dates';
+import { orderStatuses } from '@/lib/sort';
 
 // Read-only mirror of the ShipBots Onboarding Dashboard. Each onboarding subitem
-// (action item) is surfaced as a task labeled with its parent client.
+// (action item) is surfaced as a task labeled with its parent client, mapped
+// onto the ShipBots project's own status columns.
 
 interface OnboardingSubItem {
   id: string;
@@ -11,28 +13,27 @@ interface OnboardingSubItem {
   assignee?: string;
   assigneeEmails?: string[];
   dueDate?: string;
-  parentItemId?: string;
   parentItemName?: string;
 }
 
-interface ProjectRef {
-  id: string;
-  slug: string;
-  name: string;
-  color: string;
+function pickStatus(mondayStatus: string, statuses: StatusView[]): StatusView | undefined {
+  const v = (mondayStatus || '').toLowerCase();
+  const has = (kw: string) => statuses.find((s) => s.name.toLowerCase().includes(kw));
+  if (/(done|complete|finished|delivered)/.test(v)) return statuses.find((s) => s.isDone) ?? has('done');
+  if (/(progress|working|doing|wip|active)/.test(v)) return has('progress');
+  if (/(stuck|block|hold|wait)/.test(v)) return has('block');
+  return undefined;
 }
 
-function mapStatus(s: string): TaskStatus {
-  const v = (s || '').toLowerCase();
-  if (/(done|complete|finished|delivered)/.test(v)) return 'COMPLETED';
-  if (/(progress|working|doing|wip|active)/.test(v)) return 'IN_PROGRESS';
-  if (/(stuck|block|hold|wait|pending review)/.test(v)) return 'BLOCKED';
-  return 'PENDING';
-}
-
-export async function fetchShipbotsTasks(project: ProjectRef): Promise<TaskView[]> {
+export async function fetchShipbotsTasks(
+  project: ProjectView,
+  statuses: StatusView[],
+): Promise<TaskView[]> {
   const base = process.env.ONBOARDING_API_BASE?.replace(/\/$/, '');
   if (!base) return [];
+  const ordered = orderStatuses(statuses);
+  const firstStatus = ordered[0];
+
   try {
     const res = await fetch(`${base}/api/subitems`, {
       cache: 'no-store',
@@ -44,7 +45,7 @@ export async function fetchShipbotsTasks(project: ProjectRef): Promise<TaskView[
 
     return items.map((it): TaskView => {
       const due = it.dueDate ? parseDateInput(it.dueDate).toISOString() : null;
-      const status = mapStatus(it.status);
+      const st = pickStatus(it.status, ordered) ?? firstStatus;
       return {
         id: `shipbots:${it.id}`,
         projectId: project.id,
@@ -54,11 +55,13 @@ export async function fetchShipbotsTasks(project: ProjectRef): Promise<TaskView[
         name: it.name,
         description: it.status ? `Onboarding status: ${it.status}` : null,
         client: it.parentItemName ?? null,
-        status,
+        status: st?.name ?? 'Pending',
+        statusColor: st?.color ?? '#94a3b8',
+        isDone: st?.isDone ?? false,
         priority: 'MEDIUM',
         dueDate: due,
         manualDueDate: due,
-        completedAt: status === 'COMPLETED' ? due : null,
+        completedAt: st?.isDone ? due : null,
         sortOrder: 0,
         templateId: null,
         createdAt: '',

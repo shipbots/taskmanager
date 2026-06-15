@@ -14,6 +14,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ slug: 
   return (
     <ProjectBoard
       project={data.project}
+      statuses={data.statuses}
       tasks={data.tasks}
       projects={projects.map(serializeProject)}
     />

@@ -3,16 +3,22 @@ import { ActivityType, Prisma } from '@prisma/client';
 import { effectiveDueDate, deriveStatus } from '@/lib/task-derive';
 
 // Shared include shapes so routes return consistent data.
+const STATUS_ORDER_BY = [
+  { isDone: 'asc' as const },
+  { sortOrder: 'asc' as const },
+  { name: 'asc' as const },
+];
+
 export const TASK_DETAIL_INCLUDE = {
   subtasks: { orderBy: { sortOrder: 'asc' } },
   attachments: { orderBy: { createdAt: 'desc' } },
   activities: { orderBy: { createdAt: 'desc' } },
-  project: true,
+  project: { include: { statuses: { orderBy: STATUS_ORDER_BY } } },
 } satisfies Prisma.TaskInclude;
 
 export const TASK_LIST_INCLUDE = {
   subtasks: { orderBy: { sortOrder: 'asc' } },
-  project: true,
+  project: { include: { statuses: { orderBy: STATUS_ORDER_BY } } },
 } satisfies Prisma.TaskInclude;
 
 /** A due date at noon UTC, `n` days after `base` (keeps the calendar day stable). */
@@ -42,13 +48,15 @@ export async function logActivity(
 export async function recomputeTask(taskId: string) {
   const task = await prisma.task.findUnique({
     where: { id: taskId },
-    include: { subtasks: true },
+    include: { subtasks: true, project: { include: { statuses: true } } },
   });
   if (!task) return null;
 
+  const statuses = task.project?.statuses ?? [];
+  const doneName = statuses.find((s) => s.isDone)?.name ?? null;
   const dueDate = effectiveDueDate(task.subtasks, task.manualDueDate);
-  const status = deriveStatus(task.status, task.subtasks);
-  const completedAt = status === 'COMPLETED' ? task.completedAt ?? new Date() : null;
+  const status = deriveStatus(statuses, task.status, task.subtasks);
+  const completedAt = status === doneName ? task.completedAt ?? new Date() : null;
 
   return prisma.task.update({
     where: { id: taskId },

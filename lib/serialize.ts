@@ -6,6 +6,7 @@ import type {
   Project,
   Template,
   TemplateSubtask,
+  Status,
 } from '@prisma/client';
 import { currentSubtaskIndex } from '@/lib/task-derive';
 import type {
@@ -15,6 +16,7 @@ import type {
   ActivityView,
   ProjectView,
   TemplateView,
+  StatusView,
   ActivityType,
 } from '@/lib/types';
 
@@ -22,7 +24,7 @@ type TaskWithRelations = Task & {
   subtasks?: Subtask[];
   attachments?: Attachment[];
   activities?: Activity[];
-  project?: Project | null;
+  project?: (Project & { statuses?: Status[] }) | null;
 };
 
 function iso(d: Date | null | undefined): string | null {
@@ -72,6 +74,7 @@ export function serializeTask(task: TaskWithRelations): TaskView {
   const subtasks = task.subtasks ? serializeSubtasks(task.subtasks) : [];
   const attachments = task.attachments ? task.attachments.map(serializeAttachment) : [];
   const activities = task.activities ? task.activities.map(serializeActivity) : [];
+  const st = (task.project?.statuses ?? []).find((s) => s.name === task.status);
   return {
     id: task.id,
     projectId: task.projectId,
@@ -82,6 +85,8 @@ export function serializeTask(task: TaskWithRelations): TaskView {
     description: task.description,
     client: task.client,
     status: task.status,
+    statusColor: st?.color ?? '#94a3b8',
+    isDone: st?.isDone ?? false,
     priority: task.priority,
     dueDate: iso(task.dueDate),
     manualDueDate: iso(task.manualDueDate),
@@ -98,6 +103,16 @@ export function serializeTask(task: TaskWithRelations): TaskView {
     source: 'native',
     readOnly: false,
     externalUrl: null,
+  };
+}
+
+export function serializeStatus(s: Status): StatusView {
+  return {
+    id: s.id,
+    name: s.name,
+    color: s.color,
+    sortOrder: s.sortOrder,
+    isDone: s.isDone,
   };
 }
 

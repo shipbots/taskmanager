@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Drawer, inputClass, labelClass } from '@/components/ui';
-import type { TaskView, TemplateView, TaskStatus, Priority, ActivityType } from '@/lib/types';
-import { STATUS_ORDER, STATUS_META, PRIORITY_ORDER, PRIORITY_META } from '@/lib/types';
+import type { TaskView, TemplateView, Priority, ActivityType, StatusView } from '@/lib/types';
+import { PRIORITY_ORDER, PRIORITY_META, statusPillStyle } from '@/lib/types';
 import { formatDueDate, timeAgo, toYMD } from '@/lib/dates';
 import {
   X,
@@ -62,6 +62,7 @@ export function TaskDrawer({
   const [task, setTask] = useState<TaskView | null>(initialTask ?? null);
   const [templates, setTemplates] = useState<TemplateView[]>([]);
   const [clients, setClients] = useState<string[]>([]);
+  const [statuses, setStatuses] = useState<StatusView[]>([]);
   const [newSub, setNewSub] = useState('');
   const [newSubDate, setNewSubDate] = useState('');
   const [comment, setComment] = useState('');
@@ -80,11 +81,16 @@ export function TaskDrawer({
       .then((d) => Array.isArray(d) && setTemplates(d))
       .catch(() => {});
     const pid = initialTask?.projectId;
-    if (pid)
+    if (pid) {
       fetch(`/api/clients?projectId=${pid}`)
         .then((r) => (r.ok ? r.json() : []))
         .then((d) => Array.isArray(d) && setClients(d.map((c: { name: string }) => c.name)))
         .catch(() => {});
+      fetch(`/api/statuses?projectId=${pid}`)
+        .then((r) => (r.ok ? r.json() : []))
+        .then((d) => Array.isArray(d) && setStatuses(d))
+        .catch(() => {});
+    }
   }, [taskId, readOnly, initialTask?.projectId]);
 
   function apply(updated: TaskView) {
@@ -239,18 +245,24 @@ export function TaskDrawer({
           <div>
             <label className={labelClass}>Status</label>
             {readOnly ? (
-              <span className={`inline-block text-xs px-2 py-1 rounded-full ${STATUS_META[task.status].badge}`}>
-                {STATUS_META[task.status].label}
+              <span
+                className="inline-block text-xs px-2 py-1 rounded-full font-medium"
+                style={statusPillStyle(task.statusColor)}
+              >
+                {task.status}
               </span>
             ) : (
               <select
                 className={inputClass}
                 value={task.status}
-                onChange={(e) => patchTask({ status: e.target.value as TaskStatus })}
+                onChange={(e) => patchTask({ status: e.target.value })}
               >
-                {STATUS_ORDER.map((s) => (
-                  <option key={s} value={s}>
-                    {STATUS_META[s].label}
+                {!statuses.some((s) => s.name === task.status) && (
+                  <option value={task.status}>{task.status}</option>
+                )}
+                {statuses.map((s) => (
+                  <option key={s.id} value={s.name}>
+                    {s.name}
                   </option>
                 ))}
               </select>

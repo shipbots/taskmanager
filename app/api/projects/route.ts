@@ -1,6 +1,7 @@
 import { isAuthed, unauthorized, json, badRequest, serverError } from '@/lib/api';
 import { prisma } from '@/lib/prisma';
 import { getProjects, slugify } from '@/lib/projects';
+import { seedStatusesForProject } from '@/lib/statuses';
 import { serializeProject } from '@/lib/serialize';
 
 export const dynamic = 'force-dynamic';
@@ -30,6 +31,7 @@ export async function POST(request: Request) {
     const sortOrder = (max._max.sortOrder ?? -1) + 1;
 
     const project = await prisma.project.create({ data: { name, slug, color, sortOrder } });
+    await seedStatusesForProject(project.id);
     return json(serializeProject(project), { status: 201 });
   } catch (e) {
     console.error('POST /api/projects', e);
