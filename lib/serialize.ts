@@ -7,6 +7,7 @@ import type {
   Template,
   TemplateSubtask,
   Status,
+  Label,
 } from '@prisma/client';
 import { currentSubtaskIndex } from '@/lib/task-derive';
 import type {
@@ -17,6 +18,7 @@ import type {
   ProjectView,
   TemplateView,
   StatusView,
+  LabelView,
   ActivityType,
 } from '@/lib/types';
 
@@ -24,6 +26,7 @@ type TaskWithRelations = Task & {
   subtasks?: Subtask[];
   attachments?: Attachment[];
   activities?: Activity[];
+  labels?: Label[];
   project?: (Project & { statuses?: Status[] }) | null;
 };
 
@@ -98,6 +101,7 @@ export function serializeTask(task: TaskWithRelations): TaskView {
     subtasks,
     attachments,
     activities,
+    labels: task.labels ? task.labels.map(serializeLabel) : [],
     subtaskCount: subtasks.length,
     doneSubtaskCount: subtasks.filter((s) => s.done).length,
     source: 'native',
@@ -105,6 +109,10 @@ export function serializeTask(task: TaskWithRelations): TaskView {
     externalUrl: null,
     externalId: null,
   };
+}
+
+export function serializeLabel(l: Label): LabelView {
+  return { id: l.id, name: l.name, color: l.color, auto: l.auto };
 }
 
 export function serializeStatus(s: Status): StatusView {

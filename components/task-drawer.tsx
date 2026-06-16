@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Drawer, inputClass, labelClass } from '@/components/ui';
-import type { TaskView, TemplateView, Priority, ActivityType, StatusView } from '@/lib/types';
+import type { TaskView, TemplateView, Priority, ActivityType, StatusView, LabelView } from '@/lib/types';
 import { PRIORITY_ORDER, PRIORITY_META, statusPillStyle } from '@/lib/types';
 import { formatDueDate, timeAgo, toYMD, parseDateInput } from '@/lib/dates';
 import {
@@ -65,6 +65,8 @@ export function TaskDrawer({
   const [templates, setTemplates] = useState<TemplateView[]>([]);
   const [clients, setClients] = useState<string[]>([]);
   const [statuses, setStatuses] = useState<StatusView[]>([]);
+  const [projectLabels, setProjectLabels] = useState<LabelView[]>([]);
+  const [labelMenu, setLabelMenu] = useState(false);
   const [newSub, setNewSub] = useState('');
   const [newSubDate, setNewSubDate] = useState('');
   const [comment, setComment] = useState('');
@@ -100,6 +102,10 @@ export function TaskDrawer({
       fetch(`/api/statuses?projectId=${pid}`)
         .then((r) => (r.ok ? r.json() : []))
         .then((d) => Array.isArray(d) && setStatuses(d))
+        .catch(() => {});
+      fetch(`/api/labels?projectId=${pid}`)
+        .then((r) => (r.ok ? r.json() : []))
+        .then((d) => Array.isArray(d) && setProjectLabels(d))
         .catch(() => {});
     }
   }, [taskId, readOnly, isShipbots, initialTask?.projectId]);
@@ -140,6 +146,15 @@ export function TaskDrawer({
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
+    });
+    if (res.ok) apply(await res.json());
+  }
+
+  async function setTaskLabels(labelIds: string[]) {
+    const res = await fetch(`/api/tasks/${taskId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ labelIds }),
     });
     if (res.ok) apply(await res.json());
   }
@@ -377,6 +392,65 @@ export function TaskDrawer({
               placeholder="Add details…"
             />
           )}
+        </div>
+
+        {/* Labels */}
+        <div>
+          <label className={labelClass}>Labels</label>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {task.labels.map((l) => (
+              <span
+                key={l.id}
+                className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium"
+                style={statusPillStyle(l.color)}
+              >
+                {l.name}
+                {!isShipbots && (
+                  <button
+                    onClick={() => setTaskLabels(task.labels.filter((x) => x.id !== l.id).map((x) => x.id))}
+                    className="hover:opacity-70"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </span>
+            ))}
+            {task.labels.length === 0 && <span className="text-xs text-slate-400">None</span>}
+            {!isShipbots && (
+              <div className="relative">
+                <button
+                  onClick={() => setLabelMenu((o) => !o)}
+                  className="text-xs px-2 py-0.5 rounded-full border border-dashed border-slate-300 text-slate-400 hover:text-slate-700"
+                >
+                  + Add
+                </button>
+                {labelMenu && (
+                  <div className="absolute left-0 mt-1 w-48 bg-white rounded-lg shadow-lg border border-slate-200 p-1 z-10 animate-fade-in max-h-48 overflow-y-auto">
+                    {projectLabels
+                      .filter((l) => !task.labels.some((x) => x.id === l.id))
+                      .map((l) => (
+                        <button
+                          key={l.id}
+                          onClick={() => {
+                            setTaskLabels([...task.labels.map((x) => x.id), l.id]);
+                            setLabelMenu(false);
+                          }}
+                          className="w-full flex items-center gap-2 px-2 py-1 text-sm text-slate-700 hover:bg-slate-50 rounded"
+                        >
+                          <span className="w-2.5 h-2.5 rounded-full" style={{ background: l.color }} />
+                          {l.name}
+                        </button>
+                      ))}
+                    {projectLabels.filter((l) => !task.labels.some((x) => x.id === l.id)).length === 0 && (
+                      <p className="px-2 py-1 text-xs text-slate-400">
+                        Create labels via &ldquo;Filter by label&rdquo;.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         {isShipbots && task.externalUrl && (

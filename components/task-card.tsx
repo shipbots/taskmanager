@@ -16,6 +16,18 @@ export function TaskCard({ task }: { task: TaskView }) {
       className="bg-white rounded-xl border border-slate-100 shadow-sm px-3 py-2.5 hover:border-slate-300 transition"
       style={{ borderLeft: `3px solid ${importanceAccent(task)}` }}
     >
+      {task.labels.length > 0 && (
+        <div className="flex flex-wrap gap-1 mb-1.5">
+          {task.labels.map((l) => (
+            <span
+              key={l.id}
+              className="w-2.5 h-2.5 rounded-full"
+              style={{ background: l.color }}
+              title={l.name}
+            />
+          ))}
+        </div>
+      )}
       <div className="flex items-start gap-2">
         <span
           className={`text-sm font-medium leading-snug ${completed ? 'line-through text-slate-400' : 'text-slate-800'}`}

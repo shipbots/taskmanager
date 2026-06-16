@@ -73,6 +73,18 @@ export function TaskRow({
           )}
         </div>
 
+        {task.labels.length > 0 && (
+          <span className="flex items-center gap-1 shrink-0">
+            {task.labels.map((l) => (
+              <span
+                key={l.id}
+                className="w-2 h-2 rounded-full"
+                style={{ background: l.color }}
+                title={l.name}
+              />
+            ))}
+          </span>
+        )}
         <span
           className={`w-2 h-2 rounded-full shrink-0 ${PRIORITY_META[task.priority].dot}`}
           title={`${PRIORITY_META[task.priority].label} priority`}

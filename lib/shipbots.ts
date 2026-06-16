@@ -1,4 +1,4 @@
-import type { TaskView, ProjectView, StatusView } from '@/lib/types';
+import type { TaskView, ProjectView, StatusView, LabelView } from '@/lib/types';
 import { parseDateInput } from '@/lib/dates';
 import { fetchAllSubitems, hasMondayKey } from '@/lib/monday';
 
@@ -20,6 +20,7 @@ function myAssigneeEmails(): Set<string> {
 export async function fetchShipbotsTasks(
   project: ProjectView,
   statuses: StatusView[],
+  labels: LabelView[] = [],
 ): Promise<TaskView[]> {
   if (!hasMondayKey()) return [];
   const byName = new Map(statuses.map((s) => [s.name, s]));
@@ -63,6 +64,7 @@ export async function fetchShipbotsTasks(
         subtasks: [],
         attachments: [],
         activities: [],
+        labels,
         subtaskCount: 0,
         doneSubtaskCount: 0,
         source: 'shipbots',

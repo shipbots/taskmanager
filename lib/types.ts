@@ -71,6 +71,7 @@ export interface TaskView {
   subtasks: SubtaskView[];
   attachments: AttachmentView[];
   activities: ActivityView[];
+  labels: LabelView[];
   subtaskCount: number;
   doneSubtaskCount: number;
   source: TaskSource;
@@ -99,6 +100,13 @@ export interface StatusView {
   color: string;
   sortOrder: number;
   isDone: boolean;
+}
+
+export interface LabelView {
+  id: string;
+  name: string;
+  color: string;
+  auto: boolean;
 }
 
 export interface TemplateItemView {

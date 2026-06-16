@@ -81,6 +81,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       });
     }
 
+    if (Array.isArray(body.labelIds)) {
+      data.labels = { set: body.labelIds.map((lid: string) => ({ id: String(lid) })) };
+      logs.push({ type: ActivityType.FIELD_CHANGED, message: 'Updated labels' });
+    }
+
     await prisma.task.update({ where: { id }, data });
     if (typeof data.client === 'string' && data.client) await saveClient(existing.projectId, data.client);
     for (const l of logs) await logActivity(id, l.type, l.message);

@@ -46,6 +46,21 @@ model Project {
   templates           Template[]
   clients             Client[]
   statuses            Status[]
+  labels              Label[]
+}
+
+model Label {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name      String
+  color     String   @default("#eab308")
+  auto      Boolean  @default(false) // auto-applied to ShipBots/Monday tasks
+  createdAt DateTime @default(now())
+  tasks     Task[]   @relation("TaskLabels")
+
+  @@unique([projectId, name])
+  @@index([projectId])
 }
 
 model Status {
@@ -95,6 +110,7 @@ model Task {
   subtasks      Subtask[]
   attachments   Attachment[]
   activities    Activity[]
+  labels        Label[]      @relation("TaskLabels")
 
   @@index([projectId])
   @@index([status])

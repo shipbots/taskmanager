@@ -1,9 +1,10 @@
 import { prisma } from '@/lib/prisma';
 import type { Project } from '@prisma/client';
 import { getProjects, getProjectBySlug } from '@/lib/projects';
-import { serializeTask, serializeProject, serializeStatus } from '@/lib/serialize';
+import { serializeTask, serializeProject, serializeStatus, serializeLabel } from '@/lib/serialize';
 import { TASK_LIST_INCLUDE } from '@/lib/task-service';
 import { ensureStatuses, syncStatusesToOptions } from '@/lib/statuses';
+import { ensureAutoLabel } from '@/lib/labels';
 import { fetchShipbotsTasks } from '@/lib/shipbots';
 import { fetchSubitemBoardInfo, hasMondayKey } from '@/lib/monday';
 import type { TaskView, ProjectView, StatusView } from '@/lib/types';
@@ -33,7 +34,8 @@ export async function loadProjectSection(project: Project): Promise<ProjectSecti
   });
   let tasks = native.map(serializeTask);
   if (project.pullsFromOnboarding) {
-    const mirrored = await fetchShipbotsTasks(serializeProject(project), statuses);
+    const autoLabels = (await ensureAutoLabel(project.id)).map(serializeLabel);
+    const mirrored = await fetchShipbotsTasks(serializeProject(project), statuses, autoLabels);
     tasks = [...tasks, ...mirrored];
   }
   return { project: serializeProject(project), statuses, tasks };

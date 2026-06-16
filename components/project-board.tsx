@@ -25,7 +25,8 @@ import {
   X,
   Users,
 } from 'lucide-react';
-import type { ProjectView, StatusView, TaskView } from '@/lib/types';
+import type { ProjectView, StatusView, TaskView, LabelView } from '@/lib/types';
+import { LabelFilter } from '@/components/label-filter';
 import { TaskRow } from '@/components/task-row';
 import { TaskCard } from '@/components/task-card';
 import { TaskDrawer } from '@/components/task-drawer';
@@ -55,6 +56,8 @@ export function ProjectBoard({
   const [clientFilter, setClientFilter] = useState('');
   const [clients, setClients] = useState<{ id: string; name: string }[]>([]);
   const [clientSearch, setClientSearch] = useState('');
+  const [labels, setLabels] = useState<LabelView[]>([]);
+  const [labelFilter, setLabelFilter] = useState('');
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
@@ -75,6 +78,19 @@ export function ProjectBoard({
   useEffect(() => {
     loadClients();
   }, [loadClients]);
+
+  const loadLabels = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/labels?projectId=${project.id}`);
+      const d = res.ok ? await res.json() : [];
+      if (Array.isArray(d)) setLabels(d);
+    } catch {
+      /* ignore */
+    }
+  }, [project.id]);
+  useEffect(() => {
+    loadLabels();
+  }, [loadLabels]);
 
   const clientCounts = useMemo(() => {
     const m = new Map<string, number>();
@@ -111,11 +127,12 @@ export function ProjectBoard({
     const q = search.trim().toLowerCase();
     return tasks.filter((t) => {
       if (clientFilter && t.client !== clientFilter) return false;
+      if (labelFilter && !t.labels.some((l) => l.id === labelFilter)) return false;
       if (q && !(t.name.toLowerCase().includes(q) || (t.client ?? '').toLowerCase().includes(q)))
         return false;
       return true;
     });
-  }, [tasks, search, clientFilter]);
+  }, [tasks, search, clientFilter, labelFilter]);
   const listTasks = useMemo(() => sortByUrgency(filtered), [filtered]);
   const columns = useMemo(() => groupByStatus(filtered, statuses), [filtered, statuses]);
   const nonDoneCount = statuses.filter((s) => !s.isDone).length;
@@ -297,7 +314,14 @@ export function ProjectBoard({
             ))}
           </select>
         )}
-        {(search || clientFilter) && (
+        <LabelFilter
+          projectId={project.id}
+          labels={labels}
+          onLabelsChange={setLabels}
+          selected={labelFilter}
+          onSelect={setLabelFilter}
+        />
+        {(search || clientFilter || labelFilter) && (
           <span className="text-xs text-slate-400">
             {filtered.length} match{filtered.length === 1 ? '' : 'es'}
           </span>

@@ -13,11 +13,13 @@ export const TASK_DETAIL_INCLUDE = {
   subtasks: { orderBy: { sortOrder: 'asc' } },
   attachments: { orderBy: { createdAt: 'desc' } },
   activities: { orderBy: { createdAt: 'desc' } },
+  labels: true,
   project: { include: { statuses: { orderBy: STATUS_ORDER_BY } } },
 } satisfies Prisma.TaskInclude;
 
 export const TASK_LIST_INCLUDE = {
   subtasks: { orderBy: { sortOrder: 'asc' } },
+  labels: true,
   project: { include: { statuses: { orderBy: STATUS_ORDER_BY } } },
 } satisfies Prisma.TaskInclude;
 
