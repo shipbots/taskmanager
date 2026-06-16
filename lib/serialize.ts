@@ -103,6 +103,7 @@ export function serializeTask(task: TaskWithRelations): TaskView {
     source: 'native',
     readOnly: false,
     externalUrl: null,
+    externalId: null,
   };
 }
 

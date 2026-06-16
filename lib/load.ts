@@ -3,8 +3,9 @@ import type { Project } from '@prisma/client';
 import { getProjects, getProjectBySlug } from '@/lib/projects';
 import { serializeTask, serializeProject, serializeStatus } from '@/lib/serialize';
 import { TASK_LIST_INCLUDE } from '@/lib/task-service';
-import { ensureStatuses } from '@/lib/statuses';
+import { ensureStatuses, syncStatusesToOptions } from '@/lib/statuses';
 import { fetchShipbotsTasks } from '@/lib/shipbots';
+import { fetchSubitemBoardInfo, hasMondayKey } from '@/lib/monday';
 import type { TaskView, ProjectView, StatusView } from '@/lib/types';
 
 export interface ProjectSection {
@@ -15,6 +16,15 @@ export interface ProjectSection {
 
 /** A project's columns + tasks (native, plus mirrored ShipBots tasks when enabled). */
 export async function loadProjectSection(project: Project): Promise<ProjectSection> {
+  // ShipBots columns mirror the Monday subitem status options so edits map 1:1.
+  if (project.pullsFromOnboarding && hasMondayKey()) {
+    try {
+      const info = await fetchSubitemBoardInfo();
+      await syncStatusesToOptions(project.id, info.statusOptions);
+    } catch {
+      /* keep existing columns if discovery fails */
+    }
+  }
   const statuses = (await ensureStatuses(project.id)).map(serializeStatus);
   const native = await prisma.task.findMany({
     where: { projectId: project.id },

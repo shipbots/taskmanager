@@ -51,20 +51,30 @@ export function HomeBoard({
   }
 
   async function toggleComplete(task: TaskView) {
-    if (task.readOnly) return;
     const statuses = sections.find((s) => s.project.id === task.projectId)?.statuses ?? [];
     const done = statuses.find((s) => s.isDone);
     const first = orderStatuses(statuses)[0];
     const target = task.isDone ? first?.name : done?.name;
     if (!target || target === task.status) return;
-    upsertTask({ ...task, status: target, isDone: !task.isDone }); // optimistic
+    const targetStatus = statuses.find((s) => s.name === target);
+    upsertTask({
+      ...task,
+      status: target,
+      isDone: !!targetStatus?.isDone,
+      statusColor: targetStatus?.color ?? task.statusColor,
+    });
     try {
-      const res = await fetch(`/api/tasks/${task.id}`, {
+      const url =
+        task.source === 'shipbots'
+          ? `/api/shipbots/tasks/${task.externalId}`
+          : `/api/tasks/${task.id}`;
+      const res = await fetch(url, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: target }),
       });
-      upsertTask(res.ok ? await res.json() : task);
+      if (!res.ok) upsertTask(task);
+      else if (task.source !== 'shipbots') upsertTask(await res.json());
     } catch {
       upsertTask(task);
     }

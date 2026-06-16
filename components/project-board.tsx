@@ -135,7 +135,7 @@ export function ProjectBoard({
   }
 
   async function move(task: TaskView, statusName: string) {
-    if (task.status === statusName || task.readOnly) return;
+    if (task.status === statusName) return;
     const target = statuses.find((s) => s.name === statusName);
     setTasks((prev) =>
       prev.map((t) =>
@@ -145,16 +145,21 @@ export function ProjectBoard({
       ),
     );
     try {
-      const res = await fetch(`/api/tasks/${task.id}`, {
+      // ShipBots tasks are Monday subitems — write status back to Monday.
+      const url =
+        task.source === 'shipbots'
+          ? `/api/shipbots/tasks/${task.externalId}`
+          : `/api/tasks/${task.id}`;
+      const res = await fetch(url, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: statusName }),
       });
-      if (res.ok) {
+      if (!res.ok) {
+        setTasks((prev) => prev.map((t) => (t.id === task.id ? task : t)));
+      } else if (task.source !== 'shipbots') {
         const updated = await res.json();
         setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
-      } else {
-        setTasks((prev) => prev.map((t) => (t.id === task.id ? task : t)));
       }
     } catch {
       setTasks((prev) => prev.map((t) => (t.id === task.id ? task : t)));

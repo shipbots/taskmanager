@@ -76,6 +76,7 @@ export interface TaskView {
   source: TaskSource;
   readOnly: boolean;
   externalUrl: string | null;
+  externalId: string | null; // Monday subitem id for ShipBots tasks
 }
 
 export interface ProjectView {

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Drawer, inputClass, labelClass } from '@/components/ui';
 import type { TaskView, TemplateView, Priority, ActivityType, StatusView } from '@/lib/types';
 import { PRIORITY_ORDER, PRIORITY_META, statusPillStyle } from '@/lib/types';
-import { formatDueDate, timeAgo, toYMD } from '@/lib/dates';
+import { formatDueDate, timeAgo, toYMD, parseDateInput } from '@/lib/dates';
 import {
   X,
   Trash2,
@@ -58,7 +58,9 @@ export function TaskDrawer({
   onDeleted: (id: string) => void;
   onClose: () => void;
 }) {
-  const readOnly = !!initialTask?.readOnly || taskId.startsWith('shipbots:');
+  const isShipbots = initialTask?.source === 'shipbots' || taskId.startsWith('shipbots:');
+  const externalId = initialTask?.externalId ?? taskId.replace(/^shipbots:/, '');
+  const readOnly = !!initialTask?.readOnly; // ShipBots is editable but writes to Monday
   const [task, setTask] = useState<TaskView | null>(initialTask ?? null);
   const [templates, setTemplates] = useState<TemplateView[]>([]);
   const [clients, setClients] = useState<string[]>([]);
@@ -71,6 +73,16 @@ export function TaskDrawer({
 
   // Load full detail for native tasks (subtasks/attachments/timeline).
   useEffect(() => {
+    const pid = initialTask?.projectId;
+    // ShipBots tasks live in Monday, not our DB — only load the status options.
+    if (isShipbots) {
+      if (pid)
+        fetch(`/api/statuses?projectId=${pid}`)
+          .then((r) => (r.ok ? r.json() : []))
+          .then((d) => Array.isArray(d) && setStatuses(d))
+          .catch(() => {});
+      return;
+    }
     if (readOnly) return;
     fetch(`/api/tasks/${taskId}`)
       .then((r) => (r.ok ? r.json() : null))
@@ -80,7 +92,6 @@ export function TaskDrawer({
       .then((r) => (r.ok ? r.json() : []))
       .then((d) => Array.isArray(d) && setTemplates(d))
       .catch(() => {});
-    const pid = initialTask?.projectId;
     if (pid) {
       fetch(`/api/clients?projectId=${pid}`)
         .then((r) => (r.ok ? r.json() : []))
@@ -91,7 +102,7 @@ export function TaskDrawer({
         .then((d) => Array.isArray(d) && setStatuses(d))
         .catch(() => {});
     }
-  }, [taskId, readOnly, initialTask?.projectId]);
+  }, [taskId, readOnly, isShipbots, initialTask?.projectId]);
 
   function apply(updated: TaskView) {
     setTask(updated);
@@ -99,6 +110,32 @@ export function TaskDrawer({
   }
 
   async function patchTask(body: Record<string, unknown>) {
+    // ShipBots tasks are Monday subitems — write back to Monday, update locally.
+    if (isShipbots) {
+      if (!task) return;
+      const res = await fetch(`/api/shipbots/tasks/${externalId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) return;
+      const updated: TaskView = { ...task };
+      if (typeof body.name === 'string') updated.name = body.name;
+      if (typeof body.status === 'string') {
+        const st = statuses.find((s) => s.name === body.status);
+        updated.status = body.status;
+        updated.statusColor = st?.color ?? updated.statusColor;
+        updated.isDone = st?.isDone ?? /done|complete|finished|delivered/i.test(body.status);
+        updated.completedAt = updated.isDone ? updated.dueDate : null;
+      }
+      if (body.dueDate !== undefined) {
+        const ymd = body.dueDate ? String(body.dueDate).slice(0, 10) : '';
+        updated.dueDate = ymd ? parseDateInput(ymd).toISOString() : null;
+        updated.manualDueDate = updated.dueDate;
+      }
+      apply(updated);
+      return;
+    }
     const res = await fetch(`/api/tasks/${taskId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -214,10 +251,10 @@ export function TaskDrawer({
         />
         <span className="text-xs font-medium text-slate-500">{task.projectName}</span>
         {task.source === 'shipbots' && (
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-50 text-sky-600">ShipBots · read-only</span>
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-50 text-sky-600">ShipBots · synced with Monday</span>
         )}
         <div className="ml-auto flex items-center gap-1">
-          {!readOnly && (
+          {!readOnly && !isShipbots && (
             <button onClick={deleteTask} className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-600">
               <Trash2 className="w-4 h-4" />
             </button>
@@ -270,7 +307,7 @@ export function TaskDrawer({
           </div>
           <div>
             <label className={labelClass}>Priority</label>
-            {readOnly ? (
+            {readOnly || isShipbots ? (
               <span className={`inline-block text-xs px-2 py-1 rounded-full ${PRIORITY_META[task.priority].badge}`}>
                 {PRIORITY_META[task.priority].label}
               </span>
@@ -290,7 +327,7 @@ export function TaskDrawer({
           </div>
           <div>
             <label className={labelClass}>Client</label>
-            {readOnly ? (
+            {readOnly || isShipbots ? (
               <div className="text-sm text-slate-700">{task.client || '—'}</div>
             ) : (
               <>
@@ -329,7 +366,7 @@ export function TaskDrawer({
         {/* Description */}
         <div>
           <label className={labelClass}>Description</label>
-          {readOnly ? (
+          {readOnly || isShipbots ? (
             <p className="text-sm text-slate-600 whitespace-pre-wrap">{task.description || '—'}</p>
           ) : (
             <textarea
@@ -342,7 +379,7 @@ export function TaskDrawer({
           )}
         </div>
 
-        {readOnly && task.externalUrl && (
+        {isShipbots && task.externalUrl && (
           <a
             href={task.externalUrl}
             target="_blank"
@@ -354,7 +391,7 @@ export function TaskDrawer({
         )}
 
         {/* Subtasks */}
-        {!readOnly && (
+        {!readOnly && !isShipbots && (
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className={labelClass}>
@@ -456,7 +493,7 @@ export function TaskDrawer({
         )}
 
         {/* Attachments */}
-        {!readOnly && (
+        {!readOnly && !isShipbots && (
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className={labelClass}>Attachments</label>
@@ -499,7 +536,7 @@ export function TaskDrawer({
         )}
 
         {/* Timeline */}
-        {!readOnly && (
+        {!readOnly && !isShipbots && (
           <div>
             <label className={labelClass}>Timeline</label>
             <div className="flex items-center gap-2 mb-3">
