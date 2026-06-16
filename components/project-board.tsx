@@ -60,7 +60,7 @@ export function ProjectBoard({
   // Statuses still drive completion (the isDone column) and ShipBots↔Monday sync,
   // but they're no longer Kanban columns, so the list is read-only here.
   const [statuses] = useState(initialStatuses);
-  const [view, setView] = useState<'list' | 'kanban' | 'clients'>('list');
+  const [view, setView] = useState<'list' | 'kanban' | 'clients'>('kanban');
   const [open, setOpen] = useState<TaskView | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
