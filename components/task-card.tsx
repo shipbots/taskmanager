@@ -4,9 +4,15 @@ import type { TaskView } from '@/lib/types';
 import { PRIORITY_META } from '@/lib/types';
 import { classifyUrgency, formatDueDate, urgencyTextClass } from '@/lib/dates';
 import { importanceAccent } from '@/lib/sort';
-import { Paperclip, ListChecks } from 'lucide-react';
+import { Paperclip, ListChecks, Check } from 'lucide-react';
 
-export function TaskCard({ task }: { task: TaskView }) {
+export function TaskCard({
+  task,
+  onToggleComplete,
+}: {
+  task: TaskView;
+  onToggleComplete?: () => void;
+}) {
   const urgency = classifyUrgency(task.dueDate);
   const due = formatDueDate(task.dueDate);
   const completed = task.isDone;
@@ -29,6 +35,19 @@ export function TaskCard({ task }: { task: TaskView }) {
         </div>
       )}
       <div className="flex items-start gap-2">
+        {onToggleComplete && !task.readOnly && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleComplete();
+            }}
+            onPointerDown={(e) => e.stopPropagation()}
+            title={completed ? 'Mark as not done' : 'Mark complete'}
+            className={`mt-0.5 w-4.5 h-4.5 rounded-full border flex items-center justify-center shrink-0 transition-colors ${completed ? 'bg-green-500 border-green-500' : 'border-slate-300 hover:border-green-500 hover:bg-green-50'}`}
+          >
+            {completed && <Check className="w-3 h-3 text-white" />}
+          </button>
+        )}
         <span
           className={`text-sm font-medium leading-snug ${completed ? 'line-through text-slate-400' : 'text-slate-800'}`}
         >

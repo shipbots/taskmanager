@@ -372,6 +372,7 @@ export function ProjectBoard({
                 onRename={renameColumn}
                 onDelete={deleteColumn}
                 onOpen={setOpen}
+                onToggleComplete={toggleComplete}
               />
             ))}
             <AddColumn onAdd={addColumn} />
@@ -410,6 +411,7 @@ function Column({
   onRename,
   onDelete,
   onOpen,
+  onToggleComplete,
 }: {
   status: StatusView;
   tasks: TaskView[];
@@ -419,6 +421,7 @@ function Column({
   onRename: (id: string, name: string) => void;
   onDelete: (id: string) => void;
   onOpen: (task: TaskView) => void;
+  onToggleComplete: (task: TaskView) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status.name });
   const [editing, setEditing] = useState(false);
@@ -491,7 +494,12 @@ function Column({
         ) : (
           <>
             {tasks.map((task) => (
-              <DraggableCard key={task.id} task={task} onOpen={() => onOpen(task)} />
+              <DraggableCard
+                key={task.id}
+                task={task}
+                onOpen={() => onOpen(task)}
+                onToggleComplete={() => onToggleComplete(task)}
+              />
             ))}
             {tasks.length === 0 && <div className="h-16" />}
           </>
@@ -540,7 +548,15 @@ function AddColumn({ onAdd }: { onAdd: (name: string) => void }) {
   );
 }
 
-function DraggableCard({ task, onOpen }: { task: TaskView; onOpen: () => void }) {
+function DraggableCard({
+  task,
+  onOpen,
+  onToggleComplete,
+}: {
+  task: TaskView;
+  onOpen: () => void;
+  onToggleComplete: () => void;
+}) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: task.id,
     disabled: task.readOnly,
@@ -554,7 +570,7 @@ function DraggableCard({ task, onOpen }: { task: TaskView; onOpen: () => void })
       style={transform ? { transform: `translate(${transform.x}px, ${transform.y}px)` } : undefined}
       className={`cursor-pointer ${isDragging ? 'opacity-40' : ''}`}
     >
-      <TaskCard task={task} />
+      <TaskCard task={task} onToggleComplete={onToggleComplete} />
     </div>
   );
 }
