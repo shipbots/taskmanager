@@ -2,7 +2,7 @@ import { isAuthed, unauthorized, json, badRequest, serverError } from '@/lib/api
 import { prisma } from '@/lib/prisma';
 import { dueDateFromInput } from '@/lib/dates';
 import { serializeTask } from '@/lib/serialize';
-import { TASK_LIST_INCLUDE, TASK_DETAIL_INCLUDE, applyTemplateToTask, logActivity, addDaysNoonUTC } from '@/lib/task-service';
+import { TASK_LIST_INCLUDE, TASK_DETAIL_INCLUDE, applyTemplateToTask, recomputeTask, logActivity, addDaysNoonUTC } from '@/lib/task-service';
 import { saveClient } from '@/lib/clients';
 import { ActivityType, Prisma, Priority } from '@prisma/client';
 import { ensureStatuses, firstStatusName } from '@/lib/statuses';
@@ -57,6 +57,17 @@ export async function POST(request: Request) {
     });
     const sortOrder = (max._max.sortOrder ?? -1) + 1;
 
+    // Validate any requested labels belong to this project before connecting.
+    let labelConnect: { id: string }[] | undefined;
+    if (Array.isArray(body.labelIds) && body.labelIds.length) {
+      const ids = body.labelIds.map((x: unknown) => String(x));
+      const valid = await prisma.label.findMany({
+        where: { projectId, id: { in: ids } },
+        select: { id: true },
+      });
+      if (valid.length) labelConnect = valid.map((l) => ({ id: l.id }));
+    }
+
     const created = await prisma.task.create({
       data: {
         projectId,
@@ -69,6 +80,7 @@ export async function POST(request: Request) {
         dueDate: manualDueDate,
         sortOrder,
         templateId: body.templateId || null,
+        labels: labelConnect ? { connect: labelConnect } : undefined,
       },
     });
 
@@ -77,6 +89,32 @@ export async function POST(request: Request) {
 
     if (body.templateId) {
       await applyTemplateToTask(created.id, body.templateId, created.createdAt);
+    }
+
+    // Optional ad-hoc subtasks supplied at creation time.
+    if (Array.isArray(body.subtasks) && body.subtasks.length) {
+      const existing = await prisma.subtask.count({ where: { taskId: created.id } });
+      const items = (body.subtasks as Array<{ name?: unknown; dueDate?: unknown }>)
+        .map((s) => ({
+          name: String(s?.name ?? '').trim(),
+          dueDate: dueDateFromInput(s?.dueDate as string | null | undefined),
+        }))
+        .filter((s) => s.name);
+      if (items.length) {
+        await prisma.$transaction(
+          items.map((s, idx) =>
+            prisma.subtask.create({
+              data: { taskId: created.id, name: s.name, dueDate: s.dueDate, sortOrder: existing + idx },
+            }),
+          ),
+        );
+        await logActivity(
+          created.id,
+          ActivityType.SUBTASK_ADDED,
+          items.length === 1 ? `Added subtask "${items[0].name}"` : `Added ${items.length} subtasks`,
+        );
+        await recomputeTask(created.id);
+      }
     }
 
     const full = await prisma.task.findUnique({

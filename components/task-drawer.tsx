@@ -67,6 +67,8 @@ export function TaskDrawer({
   const [statuses, setStatuses] = useState<StatusView[]>([]);
   const [projectLabels, setProjectLabels] = useState<LabelView[]>([]);
   const [labelMenu, setLabelMenu] = useState(false);
+  const [newLabelName, setNewLabelName] = useState('');
+  const [newLabelColor, setNewLabelColor] = useState('#eab308');
   const [newSub, setNewSub] = useState('');
   const [newSubDate, setNewSubDate] = useState('');
   const [comment, setComment] = useState('');
@@ -157,6 +159,25 @@ export function TaskDrawer({
       body: JSON.stringify({ labelIds }),
     });
     if (res.ok) apply(await res.json());
+  }
+
+  // Create a new project label from the popover and attach it to this task.
+  async function createLabel() {
+    const nm = newLabelName.trim();
+    if (!nm || !task) return;
+    const res = await fetch('/api/labels', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId: task.projectId, name: nm, color: newLabelColor }),
+    });
+    if (!res.ok) {
+      alert((await res.json().catch(() => null))?.error ?? 'Could not create label');
+      return;
+    }
+    const created: LabelView = await res.json();
+    setProjectLabels((prev) => [...prev, created]);
+    setNewLabelName('');
+    setTaskLabels([...task.labels.map((x) => x.id), created.id]);
   }
 
   async function toggleSub(subId: string, done: boolean) {
@@ -425,27 +446,61 @@ export function TaskDrawer({
                   + Add
                 </button>
                 {labelMenu && (
-                  <div className="absolute left-0 mt-1 w-48 bg-white rounded-lg shadow-lg border border-slate-200 p-1 z-10 animate-fade-in max-h-48 overflow-y-auto">
-                    {projectLabels
-                      .filter((l) => !task.labels.some((x) => x.id === l.id))
-                      .map((l) => (
-                        <button
-                          key={l.id}
-                          onClick={() => {
-                            setTaskLabels([...task.labels.map((x) => x.id), l.id]);
-                            setLabelMenu(false);
-                          }}
-                          className="w-full flex items-center gap-2 px-2 py-1 text-sm text-slate-700 hover:bg-slate-50 rounded"
-                        >
-                          <span className="w-2.5 h-2.5 rounded-full" style={{ background: l.color }} />
-                          {l.name}
-                        </button>
-                      ))}
-                    {projectLabels.filter((l) => !task.labels.some((x) => x.id === l.id)).length === 0 && (
-                      <p className="px-2 py-1 text-xs text-slate-400">
-                        Create labels via &ldquo;Filter by label&rdquo;.
-                      </p>
-                    )}
+                  <div className="absolute left-0 mt-1 w-56 bg-white rounded-lg shadow-lg border border-slate-200 p-1 z-10 animate-fade-in">
+                    <div className="max-h-44 overflow-y-auto">
+                      {projectLabels
+                        .filter((l) => !task.labels.some((x) => x.id === l.id))
+                        .map((l) => (
+                          <button
+                            key={l.id}
+                            onClick={() => {
+                              setTaskLabels([...task.labels.map((x) => x.id), l.id]);
+                              setLabelMenu(false);
+                            }}
+                            className="w-full flex items-center gap-2 px-2 py-1 text-sm text-slate-700 hover:bg-slate-50 rounded"
+                          >
+                            <span className="w-2.5 h-2.5 rounded-full" style={{ background: l.color }} />
+                            {l.name}
+                          </button>
+                        ))}
+                      {projectLabels.filter((l) => !task.labels.some((x) => x.id === l.id)).length === 0 && (
+                        <p className="px-2 py-1 text-xs text-slate-400">No more labels to add.</p>
+                      )}
+                    </div>
+                    <div className="my-1 h-px bg-slate-100" />
+                    <div className="flex items-center gap-1.5 px-1 py-0.5">
+                      <label className="relative cursor-pointer shrink-0" title="Label color">
+                        <span
+                          className="block w-3.5 h-3.5 rounded-full border border-slate-200"
+                          style={{ background: newLabelColor }}
+                        />
+                        <input
+                          type="color"
+                          value={newLabelColor}
+                          onChange={(e) => setNewLabelColor(e.target.value)}
+                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                        />
+                      </label>
+                      <input
+                        value={newLabelName}
+                        onChange={(e) => setNewLabelName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            createLabel();
+                          }
+                        }}
+                        placeholder="New label…"
+                        className="flex-1 min-w-0 text-sm border border-slate-200 rounded px-1.5 py-0.5 focus:outline-none focus:border-[var(--accent)]"
+                      />
+                      <button
+                        onClick={createLabel}
+                        disabled={!newLabelName.trim()}
+                        className="p-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-600 disabled:opacity-40 shrink-0"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
