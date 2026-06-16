@@ -84,6 +84,40 @@ export function timeAgo(value: string | Date | null | undefined, now: Date = new
   return formatDueDate(d, now);
 }
 
+// ── Kanban date buckets ──────────────────────────────────────────────────────
+// The Kanban board groups tasks into fixed, due-date-driven columns. Placement
+// is automatic: done tasks go to "done"; a task with no due date sits in "today"
+// indefinitely until it's completed.
+export type DateBucket = 'late' | 'today' | 'tomorrow' | 'later' | 'done';
+
+export function dateBucket(
+  due: string | Date | null | undefined,
+  isDone: boolean,
+  now: Date = new Date(),
+): DateBucket {
+  if (isDone) return 'done';
+  const ymd = toYMD(due);
+  if (!ymd) return 'today'; // no date → Today, indefinitely
+  const today = todayYMD(now);
+  if (ymd < today) return 'late';
+  if (ymd === today) return 'today';
+  const tomorrow = new Date(now);
+  tomorrow.setDate(now.getDate() + 1);
+  if (ymd === todayYMD(tomorrow)) return 'tomorrow';
+  return 'later';
+}
+
+/** The due date (YYYY-MM-DD) a card receives when dropped on a date column. */
+export function bucketTargetYMD(
+  bucket: 'today' | 'tomorrow' | 'later',
+  now: Date = new Date(),
+): string {
+  const d = new Date(now);
+  if (bucket === 'tomorrow') d.setDate(now.getDate() + 1);
+  else if (bucket === 'later') d.setDate(now.getDate() + 7); // a week out
+  return todayYMD(d);
+}
+
 /** Tailwind text color class per spec: overdue=red, today=blue, later=normal. */
 export function urgencyTextClass(u: Urgency): string {
   switch (u) {

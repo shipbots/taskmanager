@@ -32,7 +32,18 @@ import { TaskCard } from '@/components/task-card';
 import { TaskDrawer } from '@/components/task-drawer';
 import { AddTaskModal } from '@/components/add-task-modal';
 import { Button } from '@/components/ui';
-import { sortByUrgency, groupByStatus, orderStatuses } from '@/lib/sort';
+import { sortByUrgency, orderStatuses } from '@/lib/sort';
+import { dateBucket, bucketTargetYMD, type DateBucket } from '@/lib/dates';
+
+// The Kanban board is organized by due date, not by manual status. Columns are
+// fixed and a task's column is computed automatically (see `dateBucket`).
+const DATE_COLUMNS: { id: DateBucket; label: string; color: string }[] = [
+  { id: 'late', label: 'Late', color: '#dc2626' },
+  { id: 'today', label: 'Today', color: '#2563eb' },
+  { id: 'tomorrow', label: 'Tomorrow', color: '#f59e0b' },
+  { id: 'later', label: 'Later', color: '#64748b' },
+  { id: 'done', label: 'Done', color: '#16a34a' },
+];
 
 export function ProjectBoard({
   project,
@@ -46,7 +57,9 @@ export function ProjectBoard({
   projects: ProjectView[];
 }) {
   const [tasks, setTasks] = useState(initialTasks);
-  const [statuses, setStatuses] = useState(initialStatuses);
+  // Statuses still drive completion (the isDone column) and ShipBots↔Monday sync,
+  // but they're no longer Kanban columns, so the list is read-only here.
+  const [statuses] = useState(initialStatuses);
   const [view, setView] = useState<'list' | 'kanban' | 'clients'>('list');
   const [open, setOpen] = useState<TaskView | null>(null);
   const [addOpen, setAddOpen] = useState(false);
@@ -134,8 +147,17 @@ export function ProjectBoard({
     });
   }, [tasks, search, clientFilter, labelFilter]);
   const listTasks = useMemo(() => sortByUrgency(filtered), [filtered]);
-  const columns = useMemo(() => groupByStatus(filtered, statuses), [filtered, statuses]);
-  const nonDoneCount = statuses.filter((s) => !s.isDone).length;
+  const dateColumns = useMemo(() => {
+    const map: Record<DateBucket, TaskView[]> = {
+      late: [],
+      today: [],
+      tomorrow: [],
+      later: [],
+      done: [],
+    };
+    for (const t of filtered) map[dateBucket(t.dueDate, t.isDone)].push(t);
+    return DATE_COLUMNS.map((c) => ({ ...c, tasks: sortByUrgency(map[c.id]) }));
+  }, [filtered]);
   const activeTask = activeId ? tasks.find((t) => t.id === activeId) ?? null : null;
 
   function upsertTask(task: TaskView) {
@@ -190,64 +212,63 @@ export function ProjectBoard({
     if (target) move(task, target);
   }
 
-  function onDragEnd(e: DragEndEvent) {
-    setActiveId(null);
-    const overName = e.over?.id as string | undefined;
-    const task = tasks.find((t) => t.id === e.active.id);
-    if (task && overName && statuses.some((s) => s.name === overName)) move(task, overName);
+  // Drop on Done → complete. Drop on a date column → reschedule the due date to
+  // match that column (and reopen if it was done). "Late" isn't a drop target.
+  async function reschedule(task: TaskView, bucket: 'today' | 'tomorrow' | 'later') {
+    const reopening = task.isDone;
+    const ymd = bucketTargetYMD(bucket);
+    const firstOpen = orderStatuses(statuses).find((s) => !s.isDone);
+    const snapshot = task;
+
+    setTasks((prev) =>
+      prev.map((t) =>
+        t.id === task.id
+          ? {
+              ...t,
+              dueDate: `${ymd}T12:00:00.000Z`,
+              ...(reopening && firstOpen
+                ? { isDone: false, status: firstOpen.name, statusColor: firstOpen.color }
+                : {}),
+            }
+          : t,
+      ),
+    );
+
+    try {
+      const url =
+        task.source === 'shipbots'
+          ? `/api/shipbots/tasks/${task.externalId}`
+          : `/api/tasks/${task.id}`;
+      const payload: Record<string, unknown> = { dueDate: ymd };
+      if (reopening && firstOpen) payload.status = firstOpen.name;
+      const res = await fetch(url, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        setTasks((prev) => prev.map((t) => (t.id === task.id ? snapshot : t)));
+      } else if (task.source !== 'shipbots') {
+        // Native PATCH returns the canonical task (its due date may follow a subtask).
+        const updated = await res.json();
+        setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+      }
+    } catch {
+      setTasks((prev) => prev.map((t) => (t.id === task.id ? snapshot : t)));
+    }
   }
 
-  // ── Column CRUD ──
-  async function addColumn(name: string) {
-    const res = await fetch('/api/statuses', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ projectId: project.id, name }),
-    });
-    if (res.ok) {
-      const created = await res.json();
-      setStatuses((prev) => [...prev, created]);
-    } else {
-      const body = await res.json().catch(() => null);
-      alert(body?.error ?? 'Could not add column');
+  function onDragEnd(e: DragEndEvent) {
+    setActiveId(null);
+    const over = e.over?.id as DateBucket | undefined;
+    const task = tasks.find((t) => t.id === e.active.id);
+    if (!task || !over || over === 'late') return;
+    if (dateBucket(task.dueDate, task.isDone) === over) return; // already in this column
+    if (over === 'done') {
+      toggleComplete(task); // task isn't done here, so this completes it
+      return;
     }
-  }
-  async function renameColumn(id: string, name: string) {
-    const old = statuses.find((s) => s.id === id);
-    const res = await fetch(`/api/statuses/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name }),
-    });
-    if (res.ok) {
-      const updated = await res.json();
-      setStatuses((prev) => prev.map((s) => (s.id === id ? updated : s)));
-      if (old) setTasks((prev) => prev.map((t) => (t.status === old.name ? { ...t, status: updated.name } : t)));
-    } else {
-      const body = await res.json().catch(() => null);
-      alert(body?.error ?? 'Could not rename column');
-    }
-  }
-  async function deleteColumn(id: string) {
-    const st = statuses.find((s) => s.id === id);
-    if (!st || !confirm(`Delete the "${st.name}" column? Its tasks move to the first column.`)) return;
-    const res = await fetch(`/api/statuses/${id}`, { method: 'DELETE' });
-    if (res.ok) {
-      const remaining = statuses.filter((s) => s.id !== id);
-      setStatuses(remaining);
-      const first = orderStatuses(remaining)[0];
-      if (first)
-        setTasks((prev) =>
-          prev.map((t) =>
-            t.status === st.name
-              ? { ...t, status: first.name, statusColor: first.color, isDone: first.isDone }
-              : t,
-          ),
-        );
-    } else {
-      const body = await res.json().catch(() => null);
-      alert(body?.error ?? 'Could not delete column');
-    }
+    reschedule(task, over);
   }
 
   return (
@@ -361,21 +382,17 @@ export function ProjectBoard({
           onDragEnd={onDragEnd}
         >
           <div className="flex gap-3 overflow-x-auto pb-2 items-start">
-            {columns.map(({ status, tasks: colTasks }) => (
-              <Column
-                key={status.id}
-                status={status}
-                tasks={colTasks}
-                collapsed={status.isDone && !showCompleted}
-                onToggleCollapse={status.isDone ? () => setShowCompleted((s) => !s) : undefined}
-                canDelete={!status.isDone && nonDoneCount > 1}
-                onRename={renameColumn}
-                onDelete={deleteColumn}
+            {dateColumns.map((col) => (
+              <DateColumn
+                key={col.id}
+                column={col}
+                droppable={col.id !== 'late'}
+                collapsed={col.id === 'done' && !showCompleted}
+                onToggleCollapse={col.id === 'done' ? () => setShowCompleted((s) => !s) : undefined}
                 onOpen={setOpen}
                 onToggleComplete={toggleComplete}
               />
             ))}
-            <AddColumn onAdd={addColumn} />
           </div>
           <DragOverlay>{activeTask ? <TaskCard task={activeTask} /> : null}</DragOverlay>
         </DndContext>
@@ -402,98 +419,49 @@ export function ProjectBoard({
   );
 }
 
-function Column({
-  status,
-  tasks,
+function DateColumn({
+  column,
+  droppable,
   collapsed,
   onToggleCollapse,
-  canDelete,
-  onRename,
-  onDelete,
   onOpen,
   onToggleComplete,
 }: {
-  status: StatusView;
-  tasks: TaskView[];
+  column: { id: DateBucket; label: string; color: string; tasks: TaskView[] };
+  droppable: boolean;
   collapsed?: boolean;
   onToggleCollapse?: () => void;
-  canDelete: boolean;
-  onRename: (id: string, name: string) => void;
-  onDelete: (id: string) => void;
   onOpen: (task: TaskView) => void;
   onToggleComplete: (task: TaskView) => void;
 }) {
-  const { setNodeRef, isOver } = useDroppable({ id: status.name });
-  const [editing, setEditing] = useState(false);
-  const [name, setName] = useState(status.name);
-
-  function save() {
-    setEditing(false);
-    const trimmed = name.trim();
-    if (trimmed && trimmed !== status.name) onRename(status.id, trimmed);
-    else setName(status.name);
-  }
+  const { setNodeRef, isOver } = useDroppable({ id: column.id, disabled: !droppable });
 
   return (
     <div className="w-72 shrink-0">
-      <div className="flex items-center gap-2 px-2 py-1.5 mb-2 group/col">
-        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: status.color }} />
-        {editing ? (
-          <input
-            autoFocus
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            onBlur={save}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') save();
-              if (e.key === 'Escape') {
-                setName(status.name);
-                setEditing(false);
-              }
-            }}
-            className="text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded px-1.5 py-0.5 min-w-0 flex-1 focus:outline-none focus:border-[var(--accent)]"
-          />
-        ) : (
-          <>
-            <span className="text-sm font-semibold text-slate-700">{status.name}</span>
-            <span className="text-xs text-slate-400">{tasks.length}</span>
-            <button
-              onClick={() => {
-                setName(status.name);
-                setEditing(true);
-              }}
-              className="opacity-0 group-hover/col:opacity-100 p-0.5 rounded text-slate-300 hover:text-slate-600"
-              title="Rename column"
-            >
-              <Pencil className="w-3.5 h-3.5" />
-            </button>
-            {canDelete && (
-              <button
-                onClick={() => onDelete(status.id)}
-                className="opacity-0 group-hover/col:opacity-100 p-0.5 rounded text-slate-300 hover:text-red-500"
-                title="Delete column"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
-            )}
-            {onToggleCollapse && (
-              <button onClick={onToggleCollapse} className="ml-auto p-0.5 text-slate-400">
-                {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-              </button>
-            )}
-          </>
+      <div className="flex items-center gap-2 px-2 py-1.5 mb-2">
+        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: column.color }} />
+        <span className="text-sm font-semibold text-slate-700">{column.label}</span>
+        <span className="text-xs text-slate-400">{column.tasks.length}</span>
+        {onToggleCollapse && (
+          <button
+            onClick={onToggleCollapse}
+            className="ml-auto p-0.5 text-slate-400"
+            title={collapsed ? 'Show done' : 'Hide done'}
+          >
+            {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          </button>
         )}
       </div>
 
       <div
         ref={setNodeRef}
-        className={`rounded-xl p-2 transition-colors ${isOver ? 'bg-indigo-50' : 'bg-slate-50/60'} ${collapsed ? 'min-h-[44px]' : 'min-h-[120px] space-y-2'}`}
+        className={`rounded-xl p-2 transition-colors ${isOver ? 'bg-indigo-50 ring-1 ring-indigo-200' : 'bg-slate-50/60'} ${collapsed ? 'min-h-[44px]' : 'min-h-[120px] space-y-2'}`}
       >
         {collapsed ? (
-          <div className="text-xs text-slate-400 px-1 py-1">{tasks.length} done — drop here to complete</div>
+          <div className="text-xs text-slate-400 px-1 py-1">{column.tasks.length} done</div>
         ) : (
           <>
-            {tasks.map((task) => (
+            {column.tasks.map((task) => (
               <DraggableCard
                 key={task.id}
                 task={task}
@@ -501,49 +469,14 @@ function Column({
                 onToggleComplete={() => onToggleComplete(task)}
               />
             ))}
-            {tasks.length === 0 && <div className="h-16" />}
+            {column.tasks.length === 0 && (
+              <div className="text-xs text-slate-300 px-1 py-4 text-center select-none">
+                {droppable ? 'Drop here' : '—'}
+              </div>
+            )}
           </>
         )}
       </div>
-    </div>
-  );
-}
-
-function AddColumn({ onAdd }: { onAdd: (name: string) => void }) {
-  const [adding, setAdding] = useState(false);
-  const [name, setName] = useState('');
-  function save() {
-    const trimmed = name.trim();
-    if (trimmed) onAdd(trimmed);
-    setName('');
-    setAdding(false);
-  }
-  return (
-    <div className="w-56 shrink-0">
-      {adding ? (
-        <input
-          autoFocus
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onBlur={save}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') save();
-            if (e.key === 'Escape') {
-              setName('');
-              setAdding(false);
-            }
-          }}
-          placeholder="Column name…"
-          className="w-full text-sm border border-slate-300 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-[var(--accent)]"
-        />
-      ) : (
-        <button
-          onClick={() => setAdding(true)}
-          className="w-full flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-dashed border-slate-300 text-sm text-slate-400 hover:text-slate-700 hover:border-slate-400"
-        >
-          <Plus className="w-4 h-4" /> Add column
-        </button>
-      )}
     </div>
   );
 }
