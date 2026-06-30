@@ -645,11 +645,19 @@ export function TaskDrawer({
                   className="group flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-50 text-sm"
                 >
                   <Paperclip className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                  <a href={a.url} target="_blank" rel="noreferrer" className="flex-1 truncate text-slate-700 hover:underline">
+                  <a
+                    href={`/api/attachments/${a.id}/file`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex-1 truncate text-slate-700 hover:underline"
+                  >
                     {a.fileName}
                   </a>
                   <span className="text-xs text-slate-400">{formatBytes(a.size)}</span>
-                  <a href={a.url} target="_blank" rel="noreferrer" download className="p-1 text-slate-300 hover:text-slate-600">
+                  <a
+                    href={`/api/attachments/${a.id}/file?download=1`}
+                    className="p-1 text-slate-300 hover:text-slate-600"
+                  >
                     <Download className="w-3.5 h-3.5" />
                   </a>
                   <button

@@ -20,8 +20,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const file = form.get('file');
     if (!(file instanceof File)) return badRequest('No file provided');
 
+    // The Blob store is private — files are served back through an auth-gated
+    // route (/api/attachments/[id]/file), never via a public URL.
     const blob = await put(`tasks/${id}/${file.name}`, file, {
-      access: 'public',
+      access: 'private',
       addRandomSuffix: true,
     });
 

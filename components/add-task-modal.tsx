@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Sparkles, Plus, Trash2 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Sparkles, Plus, Trash2, Paperclip } from 'lucide-react';
 import { Modal, Button, inputClass, labelClass } from '@/components/ui';
 import { PRIORITY_ORDER, PRIORITY_META } from '@/lib/types';
 import type { ProjectView, TaskView, TemplateView, Priority, LabelView } from '@/lib/types';
@@ -11,6 +11,12 @@ function tomorrowYMD(): string {
   const t = new Date();
   t.setDate(t.getDate() + 1);
   return todayYMD(t);
+}
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
 export function AddTaskModal({
@@ -43,6 +49,8 @@ export function AddTaskModal({
   const [subtasks, setSubtasks] = useState<{ name: string; dueDate: string }[]>([]);
   const [subName, setSubName] = useState('');
   const [subDate, setSubDate] = useState('');
+  const [files, setFiles] = useState<File[]>([]);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     fetch('/api/templates')
@@ -106,6 +114,14 @@ export function AddTaskModal({
   function removeSubRow(i: number) {
     setSubtasks((p) => p.filter((_, idx) => idx !== i));
   }
+  function addFiles(list: FileList | null) {
+    if (!list?.length) return;
+    setFiles((p) => [...p, ...Array.from(list)]);
+    if (fileRef.current) fileRef.current.value = '';
+  }
+  function removeFile(i: number) {
+    setFiles((p) => p.filter((_, idx) => idx !== i));
+  }
 
   const availableTemplates = templates.filter(
     (t) => t.projectId === null || t.projectId === projectId,
@@ -131,8 +147,18 @@ export function AddTaskModal({
         }),
       });
       if (res.ok) {
-        const task = await res.json();
+        let task = await res.json();
+        // Upload any staged files/pictures to the freshly created task.
+        let failed = 0;
+        for (const file of files) {
+          const fd = new FormData();
+          fd.append('file', file);
+          const up = await fetch(`/api/tasks/${task.id}/attachments`, { method: 'POST', body: fd });
+          if (up.ok) task = await up.json();
+          else failed++;
+        }
         onCreated(task);
+        if (failed) alert(`${failed} file(s) couldn't be uploaded (max ~4.5MB each).`);
         onClose();
       } else {
         setSaving(false);
@@ -415,6 +441,49 @@ export function AddTaskModal({
             <p className="mt-1 text-xs text-slate-400">
               A template is selected — its subtasks will be added too.
             </p>
+          )}
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <label className={labelClass}>Attachments</label>
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-800"
+            >
+              <Paperclip className="w-3.5 h-3.5" /> Add file / picture
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              multiple
+              hidden
+              onChange={(e) => addFiles(e.target.files)}
+            />
+          </div>
+          {files.length === 0 ? (
+            <p className="text-xs text-slate-400">Attach images or files (up to ~4.5MB each).</p>
+          ) : (
+            <div className="space-y-1">
+              {files.map((f, i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-slate-50 text-sm"
+                >
+                  <Paperclip className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  <span className="flex-1 truncate text-slate-700">{f.name}</span>
+                  <span className="text-xs text-slate-400 shrink-0">{formatBytes(f.size)}</span>
+                  <button
+                    type="button"
+                    onClick={() => removeFile(i)}
+                    className="p-0.5 text-slate-300 hover:text-red-500 shrink-0"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       </div>
