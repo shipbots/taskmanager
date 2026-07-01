@@ -69,16 +69,57 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       }
     }
 
-    // Manual due date — recompute effective date against subtasks (status untouched).
+    // Manual due date. When the task has subtasks, shift them to match:
+    //  - Kanban drag (rescheduleMode 'kanban'): make the dropped date actually
+    //    drive the card by moving the current / earlier unfinished subtasks onto
+    //    it, so the effective (next-unfinished) date becomes the new date.
+    //  - Manual edit: pull every subtask due BEFORE the new date up to it, and
+    //    leave subtasks due on/after the new date untouched.
     if (body.dueDate !== undefined) {
       const manual = dueDateFromInput(body.dueDate);
-      const subs = await prisma.subtask.findMany({ where: { taskId: id } });
+      let subs = await prisma.subtask.findMany({ where: { taskId: id } });
+      let shifted = 0;
+
+      if (manual && subs.length) {
+        if (body.rescheduleMode === 'kanban') {
+          const unfinished = subs.filter((s) => !s.done && s.dueDate);
+          const ids = new Set(unfinished.filter((s) => s.dueDate! < manual).map((s) => s.id));
+          // If every unfinished subtask is after the new date, pull the earliest
+          // one down so the new date wins as the effective date.
+          if (!unfinished.some((s) => s.dueDate! <= manual)) {
+            const earliest = [...unfinished].sort((a, b) => (a.dueDate! < b.dueDate! ? -1 : 1))[0];
+            if (earliest) ids.add(earliest.id);
+          }
+          if (ids.size) {
+            await prisma.subtask.updateMany({ where: { id: { in: [...ids] } }, data: { dueDate: manual } });
+            shifted = ids.size;
+          }
+        } else {
+          // Manual edit: clamp unfinished subtasks due before the new date up to it.
+          const before = subs.filter((s) => !s.done && s.dueDate && s.dueDate < manual);
+          if (before.length) {
+            await prisma.subtask.updateMany({
+              where: { id: { in: before.map((s) => s.id) } },
+              data: { dueDate: manual },
+            });
+            shifted = before.length;
+          }
+        }
+        if (shifted) subs = await prisma.subtask.findMany({ where: { taskId: id } });
+      }
+
       data.manualDueDate = manual;
       data.dueDate = effectiveDueDate(subs, manual);
       logs.push({
         type: ActivityType.DUE_DATE_CHANGED,
         message: manual ? `Due date → ${formatDueDate(manual)}` : 'Cleared due date',
       });
+      if (shifted) {
+        logs.push({
+          type: ActivityType.FIELD_CHANGED,
+          message: `Shifted ${shifted} subtask date${shifted === 1 ? '' : 's'} to match`,
+        });
+      }
     }
 
     if (Array.isArray(body.labelIds)) {

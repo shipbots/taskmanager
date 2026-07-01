@@ -239,7 +239,7 @@ export function ProjectBoard({
         task.source === 'shipbots'
           ? `/api/shipbots/tasks/${task.externalId}`
           : `/api/tasks/${task.id}`;
-      const payload: Record<string, unknown> = { dueDate: ymd };
+      const payload: Record<string, unknown> = { dueDate: ymd, rescheduleMode: 'kanban' };
       if (reopening && firstOpen) payload.status = firstOpen.name;
       const res = await fetch(url, {
         method: 'PATCH',
