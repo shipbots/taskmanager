@@ -33,3 +33,8 @@ next-env.d.ts
 # prisma
 /prisma/*.db
 /prisma/*.db-journal
+
+# local scratch / verification scripts (OneDrive sometimes restores these)
+anthropic-test.mjs
+*-test.mjs
+scratch-*.mjs
